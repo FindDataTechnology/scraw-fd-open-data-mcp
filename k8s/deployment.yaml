@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scraw-fd-open-data-mcp
+  namespace: fd-open-data
+  labels:
+    app: scraw-fd-open-data-mcp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: scraw-fd-open-data-mcp
+  template:
+    metadata:
+      labels:
+        app: scraw-fd-open-data-mcp
+      annotations:
+        deployed-at: ""
+        deployed-by: ""
+        image-tag: ""
+    spec:
+      serviceAccountName: scraw-fd-open-data-mcp
+      containers:
+      - name: scraw-fd-open-data-mcp
+        image: 23.144.68.246:30880/fd-open-data/scraw-fd-open-data-mcp:latest
+        imagePullPolicy: Always
+        command: ["scraw-fd-open-data-mcp"]
+        args: ["serve"]
+        env:
+        - name: FD_OPEN_DATA_MCP_DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: fd-open-data-secrets
+              key: DATABASE_URL
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: fd-open-data-secrets
+              key: REDIS_URL
+        - name: SCRAPYD_URL
+          valueFrom:
+            secretKeyRef:
+              name: fd-open-data-secrets
+              key: SCRAPYD_URL
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      imagePullSecrets:
+      - name: harbor-registry-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scraw-fd-open-data-mcp-service
+  namespace: fd-open-data
+spec:
+  selector:
+    app: scraw-fd-open-data-mcp
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scraw-fd-open-data-mcp
+  namespace: fd-open-data
