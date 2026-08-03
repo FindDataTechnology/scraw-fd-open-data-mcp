@@ -18,7 +18,7 @@ FROM python:3.12-slim AS builder
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libssl-dev libffi-dev git && rm -rf /var/lib/apt/lists/*
-COPY scraw-fd-open-data-mcp /build/scraw-fd-open-data-mcp
+COPY . /build/scraw-fd-open-data-mcp
 
 ARG FD_ODM_INSTALL="fd-open-data-mcp>=0.3.0"
 ARG FD_ODP_INSTALL=""
@@ -35,7 +35,7 @@ RUN python -m venv /opt/venv \
 FROM python:3.12-slim
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
-COPY scraw-fd-open-data-mcp /app
+COPY . /app
 RUN mkdir -p /app/output /plan /tmp/output
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
