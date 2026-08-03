@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: fd-proxy-probe
+  namespace: scraw
+  labels:
+    app: fd-proxy-probe
+spec:
+  schedule: "*/1 * * * *"   # every minute; tune per source (design.md open Q)
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          imagePullSecrets:
+          - name: fd-harbor-pull
+          containers:
+          - name: probe
+            image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+            imagePullPolicy: Always
+            command: ["python", "-m", "fd_open_data_mcp.probe.job"]
+            env:
+            - name: FD_OPEN_DATA_MCP_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: fd-open-data-secrets, key: DATABASE_URL}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: fd-open-data-secrets, key: REDIS_URL}
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            resources:
+              requests: {memory: "128Mi", cpu: "100m"}
+              limits: {memory: "512Mi", cpu: "500m"}
+---
+# The fd-open-data-secrets Secret (DATABASE_URL + REDIS_URL) must exist in the
+# scraw namespace. Create it with:
+#   kubectl create secret generic fd-open-data-secrets -n scraw \
+#     --from-literal=DATABASE_URL='postgresql+psycopg2://postgres:admin123@fd-open-pg.scraw:5432/postgres' \
+#     --from-literal=REDIS_URL='redis://fd-open-redis.scraw:6379/0'

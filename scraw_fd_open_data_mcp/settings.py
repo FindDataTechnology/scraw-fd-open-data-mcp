@@ -1,7 +1,7 @@
-"""Scrapy settings for scraw-fd-open-data-mcp (scraw-project-template conformant).
+"""Scrapy settings for scraw-fd-open-data-mcp.
 
-scrapy-redis scheduler + RFPDupeFilter (SCHEDULER_PERSIST, per-project REDIS_KEY);
-JsonLinesPipeline@400 (audit); PG pipeline@300 -> semantic_observations.
+Configured for scrapy-redis queue-based scheduling (dynamic load balancing).
+Used by both price crawl and financial data extraction spiders.
 """
 import os
 
@@ -12,31 +12,30 @@ NEWSPIDER_MODULE = "scraw_fd_open_data_mcp.spiders"
 
 ROBOTSTXT_OBEY = False
 
-# fetch:// download handler -> adapter registry (lib-based fetch, not HTTP).
-# Only override the fetch scheme; Scrapy keeps its defaults for http/https/data.
+# fetch:// download handler -> adapter registry (lib-based fetch, not HTTP)
 DOWNLOAD_HANDLERS = {
     "fetch": "scraw_fd_open_data_mcp.fetch_handler.FetchHandler",
 }
 
-# scrapy-redis scheduler + dupefilter (template-mandated)
+# Scrapy-redis scheduler for dynamic task distribution
 SCHEDULER = "scrapy_redis.scheduler.Scheduler"
+SCHEDULER_QUEUE_CLASS = "scrapy_redis.queue.SpiderQueue"  # LIFO queue
+SCHEDULER_PERSIST = True  # Keep tasks when stopped
 DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
-SCHEDULER_PERSIST = True
 REDIS_URL = os.environ.get("REDIS_URL", "redis://192.168.1.4:6379/0")
-REDIS_KEY = "scraw_fd_open_data_mcp:start_urls"
 
+# Rate limiting (polite crawling of akshare/eastmoney/yahoo)
+DOWNLOAD_DELAY = 0.5
+CONCURRENT_REQUESTS = 4
+CONCURRENT_REQUESTS_PER_DOMAIN = 2
+RETRY_TIMES = 2
+DOWNLOADER_TIMEOUT = 30
+
+# Item pipelines
 ITEM_PIPELINES = {
     "scraw_fd_open_data_mcp.pipelines.ObservationUpsertPipeline": 300,
     "scraw_fd_open_data_mcp.pipelines.JsonLinesPipeline": 400,
 }
 
-# outputs
 JSONL_PATH = os.environ.get("JSONL_PATH", "output/items.jl")
-
-# the mcp store (semantic_observations lives here)
 FD_OPEN_DATA_MCP_DATABASE_URL = os.environ.get("FD_OPEN_DATA_MCP_DATABASE_URL")
-
-# fetch politeness (akshare/eastmoney is flaky + rate-limited)
-DOWNLOAD_DELAY = 0
-CONCURRENT_REQUESTS = 4
-RETRY_TIMES = 2
