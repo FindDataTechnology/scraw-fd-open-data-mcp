@@ -74,20 +74,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
-
-      - name: Configure Argo CD CLI
-        uses: argoproj/argo-cd-github-action-setup@v1.3.0
-
-      - name: Login to Argo CD
+      - name: Configure kubectl
         run: |
-          argocd login ${{ secrets.ARGOCD_SERVER }} \
-            --username ${{ secrets.ARGOCD_USERNAME }} \
-            --password ${{ secrets.ARGOCD_PASSWORD }} \
-            --insecure
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+
+      - name: Update deployment image
+        run: |
+          kubectl set image deployment/financial-crawl             crawler=23.144.68.246:30880/scraw/scraw-fd-open-data-mcp:${{ github.sha }}             -n scraw
 
       - name: Update Kubernetes deployment manifest
         run: |
