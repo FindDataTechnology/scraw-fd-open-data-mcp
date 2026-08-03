@@ -50,7 +50,10 @@ class FinancialCrawlSpider(scrapy.Spider):
                  start_date: Optional[str] = "2024-01-01",
                  end_date: Optional[str] = "2026-12-31",
                  *args, **kwargs):
-        super().__init__(*args, **concept_ids)
+        # Handle case when no kwargs passed
+        if not kwargs:
+            kwargs = {}
+        super().__init__(*args, **kwargs)
 
         self.concept_ids = [int(c.strip()) for c in concept_ids.split(",")] if concept_ids else []
         self.entity_type = entity_type
