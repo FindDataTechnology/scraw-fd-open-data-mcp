@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: 23.144.68.246:30880
-  IMAGE_NAME: fd-open-data/scraw-fd-open-data-mcp
+  IMAGE_NAME: scraw/scraw-fd-open-data-mcp
 
 jobs:
   build-and-push:
