@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libssl-dev libffi-dev git && rm -rf /var/lib/apt/lists/*
 COPY . /build/scraw-fd-open-data-mcp
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp>=0.3.0"
+ARG FD_ODM_INSTALL="fd-open-data-mcp>=0.3.1"
 ARG FD_ODP_INSTALL=""
 
 RUN python -m venv /opt/venv \

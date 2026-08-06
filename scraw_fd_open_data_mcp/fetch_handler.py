@@ -82,6 +82,9 @@ class FetchHandler:
     def from_crawler(cls, crawler):
         return cls(crawler.settings, crawler)
 
+    def close(self):
+        pass
+
     def download_request(self, request, spider):
         from fd_open_data_mcp.adapters import adapter_for
         from fd_open_data_mcp.fetch.instrumentation import (

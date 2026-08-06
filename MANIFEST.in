@@ -1,0 +1,5 @@
+include .env.example
+include README.md
+include QUICK_START.md
+recursive-include config *.yaml
+recursive-include k8s *.yaml

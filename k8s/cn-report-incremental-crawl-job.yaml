@@ -1,0 +1,67 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cn-report-incremental-crawl
+  namespace: scraw
+  labels:
+    app: cn-report-incremental-crawl
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400  # clean up after 1 day
+  template:
+    spec:
+      restartPolicy: OnFailure
+      imagePullSecrets:
+      - name: fd-harbor-pull
+      containers:
+      - name: crawler
+        image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+        imagePullPolicy: Always
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "=== Starting crawl with pre-generated plan ==="
+          # Plan generated locally with: fd-open-data-mcp plan-crawl --concept-id 239-244 --entity-type stock --start 2025-01-01 --end 2025-12-31 --frequency yearly --source cn-report
+          # ~10,402 tuples (2 cn-report cmds x 5201 CN stocks x 2025-12-31)
+          # The RFPDupeFilter (SCHEDULER_PERSIST=True) skips already-crawled tuples.
+          scraw-fd-open-data-mcp crawl /plan/plan.json
+          echo "=== Crawl complete ==="
+        volumeMounts:
+        - name: plan-volume
+          mountPath: /plan
+          readOnly: true
+        env:
+        # In-cluster PG now seeded with 5201 cn-report entity_source_identifiers +
+        # 18621 existing cnreport observations (from external PG).
+        - name: FD_OPEN_DATA_MCP_DATABASE_URL
+          value: "postgresql+psycopg2://postgres:admin123@fd-open-pg.scraw:5432/postgres"
+        - name: REDIS_URL
+          value: "redis://fd-open-redis.scraw:6379/0"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        # LLM env for cn-report extraction (DeepSeek on Ark)
+        - name: LLM_API_KEY
+          valueFrom:
+            secretKeyRef: {name: llm-secrets, key: LLM_API_KEY, optional: true}
+        - name: LLM_BASE_URL
+          valueFrom:
+            secretKeyRef: {name: llm-secrets, key: LLM_BASE_URL, optional: true}
+        - name: LLM_MODEL
+          valueFrom:
+            secretKeyRef: {name: llm-secrets, key: LLM_MODEL, optional: true}
+        resources:
+          requests: {memory: "256Mi", cpu: "200m"}
+          limits: {memory: "1Gi", cpu: "1000m"}
+      volumes:
+      - name: plan-volume
+        configMap:
+          name: cn-report-plan-2025
+---
+# The llm-secrets Secret (LLM_API_KEY, LLM_BASE_URL, LLM_MODEL) is optional.
+# If cn-report extraction requires LLM, create it with:
+#   kubectl create secret generic llm-secrets -n scraw \
+#     --from-literal=LLM_API_KEY='...' \
+#     --from-literal=LLM_BASE_URL='...' \
+#     --from-literal=LLM_MODEL='...'

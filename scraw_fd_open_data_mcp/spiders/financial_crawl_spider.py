@@ -62,7 +62,8 @@ class FinancialCrawlSpider(scrapy.Spider):
 
         # Redis connection
         try:
-            self.redis_client = redis_lib.from_url(self.REDIS_URL)
+            redis_url = self.settings.get("REDIS_URL", self.REDIS_HOST)
+            self.redis_client = redis_lib.from_url(redis_url)
         except Exception as e:
             self.logger.error(f"Failed to connect to Redis: {e}")
             self.redis_client = None

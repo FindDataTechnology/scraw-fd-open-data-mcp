@@ -38,13 +38,16 @@ class ConceptCrawlSpider(scrapy.Spider):
     def start_requests(self):
         scope = self.plan["entity_scope"]
         date_range = self.plan["date_range"]
-        dates = _expand_dates(date_range)
-        self.logger.info("start_requests: db_url=%s concepts=%d dates=%s",
-                         self.db_url, len(self.plan["wanted_concepts"]), dates)
+        self.logger.info("start_requests: db_url=%s concepts=%d",
+                         self.db_url, len(self.plan["wanted_concepts"]))
         for pc in self.plan["wanted_concepts"]:
+            # ponytail: expand dates per concept — a yearly concept over a year
+            # range is ONE fetch, not 365 daily duplicates of the same statement.
+            dates = _expand_dates(date_range, pc.get("frequency", "daily"))
+            self.logger.info("  concept=%s freq=%s -> %d dates", pc.get("code"), pc.get("frequency"), len(dates))
             for rs in pc["ranked_sources"]:
                 ents = _entities(self.db_url, rs["source"], scope)
-                self.logger.info("  source=%s -> %d entities", rs["source"], len(ents))
+                self.logger.info("    source=%s -> %d entities", rs["source"], len(ents))
                 for entity_id, identifier in ents:
                     for date in dates:
                         meta = {
@@ -78,17 +81,32 @@ def _fetch_url(source, command, params):
     return f"fetch://{source}/{urllib.parse.quote(command)}?{qs}"
 
 
-def _expand_dates(date_range: dict) -> list[str]:
+def _expand_dates(date_range: dict, frequency: str = "daily") -> list[str]:
+    """Expand a date range to the fetch dates for a concept's cadence.
+
+    yearly  -> one Dec-31 per year (annual statements are fetched once per year)
+    monthly -> first day of each month
+    daily   -> every day (default; price/volume concepts)
+    """
     start = dt.date.fromisoformat(date_range["start"])
     end = dt.date.fromisoformat(date_range["end"])
     if end < start:
         start, end = end, start
-    days = []
-    cur = start
+
+    if frequency == "yearly":
+        return [f"{y}-12-31" for y in range(start.year, end.year + 1)]
+    if frequency == "monthly":
+        out, cur = [], start.replace(day=1)
+        while cur <= end:
+            out.append(cur.isoformat())
+            cur = (cur.replace(day=1) + dt.timedelta(days=32)).replace(day=1)
+        return out
+    # daily
+    out, cur = [], start
     while cur <= end:
-        days.append(cur.isoformat())
+        out.append(cur.isoformat())
         cur += dt.timedelta(days=1)
-    return days
+    return out
 
 
 def _entities(db_url: str, source: str, scope: dict):
