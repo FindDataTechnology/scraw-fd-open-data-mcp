@@ -22,7 +22,7 @@ COPY . /build/scraw-fd-open-data-mcp
 
 ARG FD_ODM_INSTALL="fd-open-data-mcp>=0.4.1"
 ARG FD_ODP_INSTALL=""
-ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.1"
+ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.2"
 
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
