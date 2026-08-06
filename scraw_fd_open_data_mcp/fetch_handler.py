@@ -34,10 +34,19 @@ class _FnStub:
 
 
 class _BindingStub:
+    """Mimics a ConceptBinding: `.column` is a str-like with `.name`.
+
+    Adapters access the column two ways: `binding.column.name` (akshare) and
+    `binding.column.lower()` (cn-report PyPI 0.4.0). A plain str has .lower() but
+    not .name; a Column-like needs both. Use a str subclass that exposes .name.
+    """
+    class _Column(str):
+        @property
+        def name(self):
+            return str(self)
+
     def __init__(self, column: str):
-        class _C:
-            name = column
-        self.column = _C()
+        self.column = self._Column(column)
 
 
 def _legacy_extract(result, column_name: str, date: str):
