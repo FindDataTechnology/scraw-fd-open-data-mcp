@@ -22,6 +22,7 @@ COPY . /build/scraw-fd-open-data-mcp
 
 ARG FD_ODM_INSTALL="fd-open-data-mcp>=0.3.1"
 ARG FD_ODP_INSTALL=""
+ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.0"
 
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
@@ -30,6 +31,7 @@ RUN python -m venv /opt/venv \
         /opt/venv/bin/pip install --no-cache-dir "$FD_ODP_INSTALL"; \
     fi \
  && /opt/venv/bin/pip install --no-cache-dir "$FD_ODM_INSTALL" \
+ && /opt/venv/bin/pip install --no-cache-dir "$FD_CNREPORT_INSTALL" \
  && /opt/venv/bin/pip install --no-cache-dir /build/scraw-fd-open-data-mcp
 
 FROM python:3.12-slim
