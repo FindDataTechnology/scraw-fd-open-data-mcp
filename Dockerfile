@@ -38,8 +38,8 @@ RUN python -m venv /opt/venv \
  # and point CNREPORT_RULES_JSON at it.
  && /opt/venv/bin/pip download --no-deps --no-binary :all: fd-cn-report -d /tmp/cnr-src \
  && mkdir -p /opt/rules \
- && tar -xzf /tmp/cnr-src/fd-cn-report-*.tar.gz -C /tmp/cnr-src \
- && cp /tmp/cnr-src/fd-cn-report-*/indicator_rules.json /opt/rules/indicator_rules.json \
+ && tar -xzf /tmp/cnr-src/fd_cn_report-*.tar.gz -C /tmp/cnr-src \
+ && cp /tmp/cnr-src/fd_cn_report-*/indicator_rules.json /opt/rules/indicator_rules.json \
  && rm -rf /tmp/cnr-src
 
 FROM python:3.12-slim
