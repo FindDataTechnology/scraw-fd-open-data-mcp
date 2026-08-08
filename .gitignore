@@ -65,3 +65,5 @@ scrapyd.pid
 # uv
 .uv/
 uv.lock
+output/
+plans/

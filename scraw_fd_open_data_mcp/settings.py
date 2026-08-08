@@ -23,6 +23,9 @@ SCHEDULER_QUEUE_CLASS = "scrapy_redis.queue.SpiderQueue"  # LIFO queue
 SCHEDULER_PERSIST = True  # Keep tasks when stopped
 DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
 REDIS_URL = os.environ.get("REDIS_URL", "redis://192.168.1.4:6379/0")
+# Per-project redis namespace (scraw-project-template / concept-crawl-executor spec)
+REDIS_KEY = "scraw_fd_open_data_mcp:start_urls"
+REDIS_START_URLS_KEY = REDIS_KEY  # scrapy-redis start-queue key
 
 # Rate limiting (polite crawling of akshare/eastmoney/yahoo)
 DOWNLOAD_DELAY = 0.5

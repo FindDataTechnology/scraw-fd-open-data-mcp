@@ -38,12 +38,19 @@ class ConceptCrawlSpider(scrapy.Spider):
     def start_requests(self):
         scope = self.plan["entity_scope"]
         date_range = self.plan["date_range"]
-        self.logger.info("start_requests: db_url=%s concepts=%d",
-                         self.db_url, len(self.plan["wanted_concepts"]))
+        mode = self.plan.get("mode", "per_date")
+        self.logger.info("start_requests: db_url=%s concepts=%d mode=%s",
+                         self.db_url, len(self.plan["wanted_concepts"]), mode)
         for pc in self.plan["wanted_concepts"]:
             # ponytail: expand dates per concept — a yearly concept over a year
             # range is ONE fetch, not 365 daily duplicates of the same statement.
-            dates = _expand_dates(date_range, pc.get("frequency", "daily"))
+            if mode == "series":
+                # series mode: one fetch per (concept, entity) with NO date param —
+                # the handler calls the bulk_history endpoint for the full range and
+                # the pipeline explodes the returned frame (design D6).
+                dates = [None]
+            else:
+                dates = _expand_dates(date_range, pc.get("frequency", "daily"))
             self.logger.info("  concept=%s freq=%s -> %d dates", pc.get("code"), pc.get("frequency"), len(dates))
             for rs in pc["ranked_sources"]:
                 ents = _entities(self.db_url, rs["source"], scope)
@@ -56,6 +63,9 @@ class ConceptCrawlSpider(scrapy.Spider):
                             "concept_id": pc["concept_id"], "entity_type": pc["entity_type"],
                             "entity_id": entity_id, "unit": pc.get("unit") or "",
                         }
+                        if mode == "series":
+                            # the handler/pipeline clamp to the plan's range
+                            meta["start"], meta["end"] = date_range["start"], date_range["end"]
                         url = _fetch_url(rs["source"], rs["function_command"], meta)
                         yield scrapy.Request(url, callback=self.parse, meta=meta, dont_filter=False)
 
@@ -64,6 +74,20 @@ class ConceptCrawlSpider(scrapy.Spider):
             return
         value = response.text
         if value == "":
+            return
+        if response.meta["date"] is None:
+            # series mode: body is the full {'YYYY-MM-DD': value} frame as JSON —
+            # hand it to the pipeline as ONE item; the pipeline explodes + clamps it.
+            yield {
+                "concept_id": response.meta["concept_id"],
+                "entity_type": response.meta["entity_type"],
+                "entity_id": response.meta["entity_id"],
+                "unit": response.meta["unit"],
+                "source_used": response.meta["source"],
+                "series": json.loads(value),
+                "start": response.meta.get("start"),
+                "end": response.meta.get("end"),
+            }
             return
         yield {
             "concept_id": response.meta["concept_id"],
@@ -77,7 +101,7 @@ class ConceptCrawlSpider(scrapy.Spider):
 
 
 def _fetch_url(source, command, params):
-    qs = urllib.parse.urlencode({k: str(v) for k, v in params.items()})
+    qs = urllib.parse.urlencode({k: str(v) for k, v in params.items() if v is not None})
     return f"fetch://{source}/{urllib.parse.quote(command)}?{qs}"
 
 

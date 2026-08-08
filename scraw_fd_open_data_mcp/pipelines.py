@@ -8,7 +8,16 @@ from itemadapter import ItemAdapter
 
 
 class ObservationUpsertPipeline:
-    """Batch-upsert ObservationItems into semantic_observations."""
+    """Batch-upsert ObservationItems into semantic_observations.
+
+    Two item shapes:
+    - per_date:  {concept_id, entity_type, entity_id, date, value, unit, source_used}
+    - series:    {concept_id, entity_type, entity_id, unit, source_used,
+                  series: {'YYYY-MM-DD': value}, start, end}
+      A series item is EXPLODED into per-date observation rows here, clamped to
+      [start, end] (out-of-range rows are dropped), before the standard
+      idempotent upsert (design D6).
+    """
 
     BATCH = 500
 
@@ -16,10 +25,33 @@ class ObservationUpsertPipeline:
         self._buffer: list[dict] = []
 
     def process_item(self, item, spider):
-        self._buffer.append(ItemAdapter(item).asdict())
+        d = ItemAdapter(item).asdict()
+        if "series" in d:
+            self._explode(d, spider)
+        else:
+            self._buffer.append(d)
         if len(self._buffer) >= self.BATCH:
             self._flush()
         return item
+
+    def _explode(self, d: dict, spider) -> None:
+        series = d.get("series") or {}
+        start, end = d.get("start") or "", d.get("end") or "9999-12-31"
+        kept = dropped = 0
+        for date, value in series.items():
+            if not (start <= str(date) <= end):
+                dropped += 1
+                continue
+            self._buffer.append({
+                "concept_id": d["concept_id"], "entity_type": d["entity_type"],
+                "entity_id": d["entity_id"], "date": str(date), "value": value,
+                "unit": d.get("unit") or "", "source_used": d.get("source_used") or "",
+            })
+            kept += 1
+        spider.logger.debug(
+            "series explode: concept=%s entity=%s -> %d rows (%d out-of-range dropped)",
+            d.get("concept_id"), d.get("entity_id"), kept, dropped,
+        )
 
     def close_spider(self, spider):
         self._flush()
@@ -29,8 +61,9 @@ class ObservationUpsertPipeline:
             return
         from scraw_fd_open_data_mcp.db import write_observations
 
-        write_observations(self._buffer)
-        self._buffer.clear()
+        # swap the buffer first so the writer holds a stable list (no aliasing)
+        batch, self._buffer = self._buffer, []
+        write_observations(batch)
 
 
 class JsonLinesPipeline:
