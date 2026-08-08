@@ -70,12 +70,14 @@ spec:
             imagePullPolicy: Always
             command: ["python", "-m", "fd_open_data_mcp.refresh.reconciler"]
             env:
+            # In-cluster fd-open-pg/fd-open-redis literals (same pattern as
+            # proxy-pool-sync). The cluster CANNOT reach the 192.168.1.4 LAN DB
+            # (fd-open-data-secrets' values point there and would fail); the
+            # reconciler + spawned crawl Jobs must share this in-cluster DB.
             - name: FD_OPEN_DATA_MCP_DATABASE_URL
-              valueFrom:
-                secretKeyRef: {name: fd-open-data-secrets, key: DATABASE_URL}
+              value: "postgresql+psycopg2://postgres:admin123@fd-open-pg.scraw:5432/postgres"
             - name: REDIS_URL
-              valueFrom:
-                secretKeyRef: {name: fd-open-data-secrets, key: REDIS_URL}
+              value: "redis://fd-open-redis.scraw:6379/0"
             - name: RECONCILER_LAUNCHER
               value: "k8s"
             - name: POLICY_MAX_FETCHES
