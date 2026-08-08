@@ -1,0 +1,91 @@
+# Crawl-policy reconciler (add-fund-crawl-control-center, design D5).
+#
+# Every 15 minutes: close finished policy_runs (completion probe), then for each
+# enabled crawl_policies row whose cron is due (in the policy's timezone) and has
+# no open run, compile a CrawlPlan and launch a crawl Job (K8sJobLauncher via the
+# in-cluster service-account API — the image has no kubectl).
+#
+# Apply:
+#   kubectl apply -f k8s/crawl-reconciler-cronjob.yaml
+# Run one tick manually:
+#   kubectl create job --from=cronjob/crawl-reconciler crawl-reconciler-manual -n scraw
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: crawl-reconciler
+  namespace: scraw
+---
+# The reconciler creates one ConfigMap + one batch/v1 Job per launched policy run
+# and reads Job status for the completion probe.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: crawl-reconciler
+  namespace: scraw
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create", "get", "list"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: crawl-reconciler
+  namespace: scraw
+subjects:
+- kind: ServiceAccount
+  name: crawl-reconciler
+  namespace: scraw
+roleRef:
+  kind: Role
+  name: crawl-reconciler
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: crawl-reconciler
+  namespace: scraw
+  labels:
+    app: crawl-reconciler
+spec:
+  schedule: "7,22,37,52 * * * *"   # every 15 min, off the :00/:15/:30/:45 marks
+  concurrencyPolicy: Forbid        # one tick at a time (single-flight is per-policy)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: crawl-reconciler
+          restartPolicy: OnFailure
+          imagePullSecrets:
+          - name: fd-harbor-pull
+          containers:
+          - name: reconciler
+            image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+            imagePullPolicy: Always
+            command: ["python", "-m", "fd_open_data_mcp.refresh.reconciler"]
+            env:
+            - name: FD_OPEN_DATA_MCP_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: fd-open-data-secrets, key: DATABASE_URL}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: fd-open-data-secrets, key: REDIS_URL}
+            - name: RECONCILER_LAUNCHER
+              value: "k8s"
+            - name: POLICY_MAX_FETCHES
+              value: "50000"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            resources:
+              requests: {memory: "128Mi", cpu: "100m"}
+              limits: {memory: "512Mi", cpu: "500m"}
+---
+# Requires the fd-open-data-secrets Secret (see probe-cronjob.yaml) and the
+# crawl_policies / policy_runs tables (alembic migration of fd-open-data-mcp>=0.5.0).
+# Local dev instead: RECONCILER_LAUNCHER=scrapyd python -m fd_open_data_mcp.refresh.reconciler

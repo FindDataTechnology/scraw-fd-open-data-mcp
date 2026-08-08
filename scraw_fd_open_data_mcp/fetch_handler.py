@@ -21,8 +21,16 @@ source. Otherwise it uses the single ``(source, command, column)`` from meta.
 Request meta carries: source, command, identifier, date, column, concept_id,
 entity_type, entity_id, unit, [ranked_sources]. Returns 200 + value as body
 (204 if no value, 500 on fetch error, 503 if every source is unavailable).
+
+Series mode (design D6): when meta ``date`` is None, meta also carries
+``start``/``end`` (the plan's range) and the handler calls the adapter's
+``build_range_params`` + ``extract_series`` — one bulk_history fetch for the
+whole range — returning the ``{'YYYY-MM-DD': value}`` dict as a JSON body.
+The spider's parse + pipeline explode it into per-date observations.
 """
 from __future__ import annotations
+
+import json
 
 from scrapy.http import TextResponse
 
@@ -72,10 +80,26 @@ def _build_params(adapter, command, identifier, date, column):
     return {"symbol": identifier, "date": date}
 
 
-def _extract(adapter, result, column, date, source, command):
+def _extract(adapter, result, column, date, source, command, identifier=None):
     if adapter:
-        return adapter.extract_value(result, column, date)
+        return adapter.extract_value(result, column, date, identifier=identifier)
     return _legacy_extract(result, column, date)
+
+
+def _build_series_params(adapter, command, identifier, start, end, column):
+    """Range form of ``_build_params`` for series mode (bulk_history endpoints)."""
+    if adapter and hasattr(adapter, "build_range_params"):
+        return adapter.build_range_params(_FnStub(command), identifier, start, end, _BindingStub(column))
+    if adapter:
+        return adapter.build_params(_FnStub(command), identifier, start, _BindingStub(column))
+    return {"symbol": identifier}
+
+
+def _extract_series(adapter, result, column, start, end):
+    """``{'YYYY-MM-DD': value}`` for the whole frame, or None if unsupported."""
+    if adapter and hasattr(adapter, "extract_series"):
+        return adapter.extract_series(result, column, start, end)
+    return None
 
 
 class FetchHandler:
@@ -105,6 +129,8 @@ class FetchHandler:
         concept_id = m.get("concept_id")
         entity_type = m.get("entity_type")
         entity_id = m.get("entity_id")
+        series_mode = date is None
+        start, end = m.get("start"), m.get("end")
 
         # The source chain to try: explicit ranked_sources in meta, else the single source.
         chain = m.get("ranked_sources") or [
@@ -115,7 +141,9 @@ class FetchHandler:
         for rs in chain:
             source, command, column = rs["source"], rs["command"], rs.get("column_name") or m["column"]
             adapter = adapter_for(source, command)
-            params = _build_params(adapter, command, identifier, date, column)
+            params = (_build_series_params(adapter, command, identifier, start, end, column)
+                      if series_mode else
+                      _build_params(adapter, command, identifier, date, column))
             try:
                 result = instrumented_fetch(
                     source, command, params,
@@ -129,7 +157,20 @@ class FetchHandler:
                 spider.logger.warning("fetch failed %s/%s: %s", source, command, e)
                 last_err = str(e)
                 continue  # next source
-            value = _extract(adapter, result, column, date, source, command)
+            if series_mode:
+                series = _extract_series(adapter, result, column, start, end)
+                if series:
+                    return TextResponse(
+                        request.url, status=200,
+                        body=json.dumps(series, ensure_ascii=False, default=str).encode(),
+                        request=request,
+                    )
+                if series is None:
+                    # adapter cannot serve series (no extract_series) - try next source
+                    last_err = f"{source}/{command} has no extract_series"
+                    continue
+                continue  # empty frame from this source - try the next source
+            value = _extract(adapter, result, column, date, source, command, identifier=identifier)
             if value is None:
                 # no data for this date from this source - try the next source
                 continue
