@@ -24,8 +24,11 @@ def _engine() -> Engine:
 def write_observations(rows: Iterable[dict]) -> int:
     """Idempotent upsert of observation rows into semantic_observations.
 
-    Each row: {concept_id, entity_type, entity_id, date, value, unit, source_used}.
-    ON CONFLICT DO NOTHING keeps the existing (highest-ranked) value (spec D3 conflict policy).
+    Each row: {concept_id, entity_type, entity_id, date, granularity, value, unit, source_used}.
+    ON CONFLICT DO NOTHING keeps the existing value (first-writer-wins). The
+    (…, date, granularity) key makes monthly and daily observations of the same
+    period DISTINCT rows, so first-writer-wins no longer silently drops a cadence
+    (fix-observation-time-granularity).
     """
     rows = list(rows)
     if not rows:
@@ -36,13 +39,14 @@ def write_observations(rows: Iterable[dict]) -> int:
     now = datetime.now(timezone.utc)
     conn = _engine().raw_connection()
     cur = conn.cursor()
-    data = [(r["concept_id"], r["entity_type"], r["entity_id"], r["date"], str(r["value"]),
+    data = [(r["concept_id"], r["entity_type"], r["entity_id"], r["date"],
+             r.get("granularity") or "day", str(r["value"]),
              r.get("unit") or "", r.get("source_used") or "", now) for r in rows]
     execute_values(cur, """
         INSERT INTO semantic_observations
-            (concept_id, entity_type, entity_id, date, value, unit, source_used, fetched_at)
+            (concept_id, entity_type, entity_id, date, granularity, value, unit, source_used, fetched_at)
         VALUES %s
-        ON CONFLICT (concept_id, entity_type, entity_id, date) DO NOTHING
+        ON CONFLICT (concept_id, entity_type, entity_id, date, granularity) DO NOTHING
     """, data)
     conn.commit()
     cur.close()

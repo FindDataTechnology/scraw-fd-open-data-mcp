@@ -1,0 +1,70 @@
+# Independent master Redis (add-multi-cluster-master-db).
+# Shared by the whole fleet: scrapy-redis dedup queue + circuit-breaker hot state
+# (circuit:{source}:{proxy_id}). Per-cluster egress means proxy_id is per-cluster,
+# so a ban on cluster A's IP opens only A's circuit - the reconciler routes around it.
+#
+# circuit.py / rate_limit.py no-op (treat as closed/acquired) when Redis is
+# unreachable, so a cross-region Redis hiccup degrades gracefully (no crash).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: master-redis
+  namespace: fd-master
+  labels:
+    app: master-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: master-redis
+  template:
+    metadata:
+      labels:
+        app: master-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        # AUTH + AOF persistence - the master Redis is durable + not an open relay.
+        # Workers set REDIS_URL=redis://:<REDIS_PASSWORD>@master-redis.fd-master:6379/0
+        command: ["redis-server", "--appendonly", "yes", "--requirepass", "$(REDIS_PASSWORD)"]
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: master-redis-secret, key: REDIS_PASSWORD}
+        ports:
+        - containerPort: 6379
+          name: redis
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          requests: {memory: "128Mi", cpu: "50m"}
+          limits: {memory: "512Mi", cpu: "250m"}
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: data
+        emptyDir: {}  # AOF; promote to PVC for durability across restarts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: master-redis
+  namespace: fd-master
+spec:
+  selector:
+    app: master-redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+  type: ClusterIP

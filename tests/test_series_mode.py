@@ -98,7 +98,8 @@ def test_parse_per_date_item(tmp_path):
     items = list(sp.parse(_FakeResponse(meta, "1.5")))
     assert items == [{"concept_id": 378, "entity_type": "fund", "entity_id": 5369,
                       "date": "2024-01-02", "value": "1.5", "unit": "CNY",
-                      "source_used": "akshare"}]
+                      "source_used": "akshare",
+                      "granularity": "day"}]  # default tag when meta carries none
 
 
 # ─── pipeline: explode + clamp + upsert ──────────────────────────────────────
@@ -127,6 +128,7 @@ def test_pipeline_explodes_and_clamps():
     assert [r["date"] for r in rows] == ["2024-01-02", "2024-12-31"]
     assert all(r["concept_id"] == 378 and r["entity_id"] == 5369 for r in rows)
     assert all(r["source_used"] == "akshare" for r in rows)
+    assert all(r["granularity"] == "day" for r in rows)  # default when item carries none
 
 
 def test_pipeline_per_date_passthrough():

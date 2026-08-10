@@ -1,27 +1,39 @@
-# Crawl-policy reconciler (add-fund-crawl-control-center, design D5).
+# Crawl-policy reconciler (add-multi-cluster-master-db).
 #
-# Every 15 minutes: close finished policy_runs (completion probe), then for each
-# enabled crawl_policies row whose cron is due (in the policy's timezone) and has
-# no open run, compile a CrawlPlan and launch a crawl Job (K8sJobLauncher via the
-# in-cluster service-account API — the image has no kubectl).
+# Runs on the MASTER cluster (US) in the fd-master namespace, next to master-pg +
+# master-redis. Every 15 minutes: close finished policy_runs, then for each enabled
+# crawl_policies row whose cron is due (policy timezone) and has no open run, compile
+# a CrawlPlan and dispatch it to a worker cluster via MultiClusterLauncher (picks a
+# cluster by tags + circuit state + load; creates a ConfigMap + Job on that remote
+# cluster through its mounted kubeconfig).
 #
-# Apply:
+# Apply AFTER the master stack (k8s/master/) is up:
 #   kubectl apply -f k8s/crawl-reconciler-cronjob.yaml
 # Run one tick manually:
-#   kubectl create job --from=cronjob/crawl-reconciler crawl-reconciler-manual -n scraw
+#   kubectl create job --from=cronjob/crawl-reconciler crawl-reconciler-manual -n fd-master
+#
+# Onboarding a worker server:
+#   1. k3s/k8s on the new server; create a ServiceAccount + token + clusterrolebinding.
+#   2. Add the token + CA as keys in the worker-kubeconfigs Secret (one per cluster):
+#        kubectl create secret generic worker-kubeconfigs -n fd-master \
+#          --from-file=<cluster-name>.token=./token --from-file=<cluster-name>.ca=./ca.crt
+#      (or `kubectl edit secret worker-kubeconfigs` to add keys for additional clusters)
+#   3. INSERT INTO clusters (name, api_server, namespace, image, tags, capacity) VALUES (...)
+#   4. The next reconciler tick (≤15 min) starts dispatching to it.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: crawl-reconciler
-  namespace: scraw
+  namespace: fd-master
 ---
-# The reconciler creates one ConfigMap + one batch/v1 Job per launched policy run
-# and reads Job status for the completion probe.
+# Used only by the k8s (single-cluster, in-cluster) fallback launcher. The
+# k8s-multi launcher reaches remote clusters via per-cluster kubeconfigs, not
+# this local SA.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: crawl-reconciler
-  namespace: scraw
+  namespace: fd-master
 rules:
 - apiGroups: [""]
   resources: ["configmaps"]
@@ -34,11 +46,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: crawl-reconciler
-  namespace: scraw
+  namespace: fd-master
 subjects:
 - kind: ServiceAccount
   name: crawl-reconciler
-  namespace: scraw
+  namespace: fd-master
 roleRef:
   kind: Role
   name: crawl-reconciler
@@ -48,7 +60,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: crawl-reconciler
-  namespace: scraw
+  namespace: fd-master
   labels:
     app: crawl-reconciler
 spec:
@@ -70,24 +82,45 @@ spec:
             imagePullPolicy: Always
             command: ["python", "-m", "fd_open_data_mcp.refresh.reconciler"]
             env:
-            # In-cluster fd-open-pg/fd-open-redis literals (same pattern as
-            # proxy-pool-sync). The cluster CANNOT reach the 192.168.1.4 LAN DB
-            # (fd-open-data-secrets' values point there and would fail); the
-            # reconciler + spawned crawl Jobs must share this in-cluster DB.
+            # Master control-plane DB via PgBouncer (the single source of truth).
+            # Workers use the SAME endpoint (SCRAW_K8S_DATABASE_URL below).
             - name: FD_OPEN_DATA_MCP_DATABASE_URL
-              value: "postgresql+psycopg2://postgres:admin123@fd-open-pg.scraw:5432/postgres"
+              valueFrom:
+                secretKeyRef: {name: master-db-secret, key: DATABASE_URL}
             - name: REDIS_URL
-              value: "redis://fd-open-redis.scraw:6379/0"
+              valueFrom:
+                secretKeyRef: {name: master-redis-secret, key: REDIS_URL}  # redis://:pw@master-redis.fd-master:6379/0
             - name: RECONCILER_LAUNCHER
-              value: "k8s"
+              value: "k8s-multi"
+            # The DB + Redis URLs the worker Jobs use (master PgBouncer + master Redis).
+            # MultiClusterLauncher injects these into every spawned crawl Job.
+            - name: SCRAW_K8S_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: master-db-secret, key: DATABASE_URL}
+            - name: SCRAW_K8S_REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: master-redis-secret, key: REDIS_URL}
+            - name: KUBECONFIG_DIR
+              value: "/kubeconfigs"
             - name: POLICY_MAX_FETCHES
               value: "50000"
             - name: PYTHONUNBUFFERED
               value: "1"
+            volumeMounts:
+            - name: kubeconfigs
+              mountPath: /kubeconfigs
+              readOnly: true
             resources:
               requests: {memory: "128Mi", cpu: "100m"}
               limits: {memory: "512Mi", cpu: "500m"}
+          volumes:
+          - name: kubeconfigs
+            secret:
+              secretName: worker-kubeconfigs   # keys: <cluster>.token, <cluster>.ca
 ---
-# Requires the fd-open-data-secrets Secret (see probe-cronjob.yaml) and the
-# crawl_policies / policy_runs tables (alembic migration of fd-open-data-mcp>=0.5.0).
+# Requires:
+#   - the master stack (k8s/master/) deployed in fd-master
+#   - master-db-secret (DATABASE_URL, POSTGRES_PASSWORD) + master-redis-secret (REDIS_URL, REDIS_PASSWORD)
+#   - worker-kubeconfigs Secret (one <name>.token + <name>.ca per worker cluster)
+#   - the clusters table populated (one row per worker cluster) + fd-open-data-mcp migrate run
 # Local dev instead: RECONCILER_LAUNCHER=scrapyd python -m fd_open_data_mcp.refresh.reconciler
