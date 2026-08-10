@@ -10,6 +10,11 @@
 # fd-open-data-mcp is installed FROM PYPI inside the Dockerfile (default
 # FD_ODM_INSTALL=fd-open-data-mcp>=0.4.5), so bumping the Dockerfile arg + a
 # push here lands new adapters / proxy-health / multi-cluster code in the image.
+#
+# The buildx setup mirrors scraw-ops/docker-publish.yml (the proven-working
+# config): Harbor serves HTTP only, so buildkitd-config-inline MUST declare
+# http=true for the registry or the blob-upload push fails with "unauthorized"
+# even though docker login succeeded.
 name: Build & Push image to Harbor
 
 on:
@@ -39,26 +44,30 @@ jobs:
 
       - name: Configure Docker daemon for insecure Harbor registry
         run: |
-          sudo mkdir -p /etc/docker
-          echo '{"insecure-registries": ["${{ env.REGISTRY }}"]}' | sudo tee /etc/docker/daemon.json
+          echo "{\"insecure-registries\": [\"${{ env.REGISTRY }}\"]}" | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
           sleep 3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
-          buildkitd-flags: --allow-insecure-entitlement security.insecure
 
       - name: Log in to Harbor
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          # HARBOR_USER/HARBOR_PASS = the known-good robot account that
-          # scraw-ops/docker-publish.yml uses (has push to lawcraw_business).
-          # HARBOR_ROBOT_* lacked push permission.
-          username: ${{ secrets.HARBOR_USER }}
-          password: ${{ secrets.HARBOR_PASS }}
+          # robot$lawcraw_business = system robot with push/pull on the
+          # lawcraw_business project (verified via Harbor API: 202 on blob
+          # upload). HARBOR_USER/HARBOR_PASS is scoped to the scraw project
+          # and CANNOT push here - that was run 2's failure.
+          username: ${{ secrets.HARBOR_ROBOT_USER }}
+          password: ${{ secrets.HARBOR_ROBOT_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # THE fix: without http=true, buildkit pushes via HTTPS to an
+          # HTTP-only registry, the blob upload starts then dies with
+          # "unauthorized". Mirrors scraw-ops/docker-publish.yml exactly.
+          buildkitd-config-inline: |
+            [registry."${{ env.REGISTRY }}"]
+              http = true
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
@@ -73,7 +82,7 @@ jobs:
 
       - name: Build and push Docker image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
