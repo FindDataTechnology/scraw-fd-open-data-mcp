@@ -54,8 +54,11 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.HARBOR_ROBOT_USER }}
-          password: ${{ secrets.HARBOR_ROBOT_PASSWORD }}
+          # HARBOR_USER/HARBOR_PASS = the known-good robot account that
+          # scraw-ops/docker-publish.yml uses (has push to lawcraw_business).
+          # HARBOR_ROBOT_* lacked push permission.
+          username: ${{ secrets.HARBOR_USER }}
+          password: ${{ secrets.HARBOR_PASS }}
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
