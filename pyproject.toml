@@ -9,7 +9,8 @@ description = "Unified concept-driven Scrapy crawler for fd-open-data-mcp (crawl
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
-    "scrapy>=2.12",
+    "scrapy>=2.12,<2.13",  # 2.13+ broke start_requests + sync download_handler (matches Dockerfile)
+    "Twisted<25",  # 25+ removed _setAcceptableProtocols that scrapy 2.12 needs (matches Dockerfile)
     "scrapy-redis>=0.7.3",
     "scrapyd>=1.3",
     "scrapyd-client>=1.3",

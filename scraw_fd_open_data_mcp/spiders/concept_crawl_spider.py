@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import urllib.parse
 
 import scrapy
@@ -35,7 +36,35 @@ class ConceptCrawlSpider(scrapy.Spider):
     def db_url(self) -> str:
         return self.settings["FD_OPEN_DATA_MCP_DATABASE_URL"]
 
+    def _register_egress(self) -> None:
+        """Self-register this worker's egress as a per-cluster direct proxy so the
+        circuit breaker tracks bans per egress IP across the fleet
+        (add-multi-cluster-master-db). No-op when SCRAW_CLUSTER_ID is unset
+        (legacy single-cluster mode)."""
+        raw = os.environ.get("SCRAW_CLUSTER_ID")
+        if not raw:
+            return
+        try:
+            cluster_id = int(raw)
+        except ValueError:
+            self.logger.warning("SCRAW_CLUSTER_ID=%r not an int; skipping egress registration", raw)
+            return
+        from sqlalchemy.orm import sessionmaker
+        from fd_open_data_mcp.proxy.seed import register_cluster_egress
+        eng = create_engine(self.db_url, connect_args={"connect_timeout": 15})
+        session = sessionmaker(bind=eng)()
+        try:
+            action = register_cluster_egress(session, cluster_id)
+            session.commit()
+            self.logger.info("egress registered for cluster_id=%d (%s)", cluster_id, action)
+        except Exception as e:  # noqa: BLE001 - egress registration must not break the crawl
+            self.logger.warning("egress registration failed (non-fatal): %s", e)
+            session.rollback()
+        finally:
+            session.close()
+
     def start_requests(self):
+        self._register_egress()
         scope = self.plan["entity_scope"]
         date_range = self.plan["date_range"]
         mode = self.plan.get("mode", "per_date")
@@ -51,7 +80,11 @@ class ConceptCrawlSpider(scrapy.Spider):
                 dates = [None]
             else:
                 dates = _expand_dates(date_range, pc.get("frequency", "daily"))
-            self.logger.info("  concept=%s freq=%s -> %d dates", pc.get("code"), pc.get("frequency"), len(dates))
+            # plan carries the canonical granularity tag; fall back to frequency-derived
+            # for hand-edited plans that predate the field
+            gran = pc.get("granularity") or _granularity(pc.get("frequency"))
+            self.logger.info("  concept=%s freq=%s granularity=%s -> %d dates",
+                             pc.get("code"), pc.get("frequency"), gran, len(dates))
             for rs in pc["ranked_sources"]:
                 ents = _entities(self.db_url, rs["source"], scope)
                 self.logger.info("    source=%s -> %d entities", rs["source"], len(ents))
@@ -62,6 +95,7 @@ class ConceptCrawlSpider(scrapy.Spider):
                             "identifier": identifier, "date": date, "column": rs["column_name"],
                             "concept_id": pc["concept_id"], "entity_type": pc["entity_type"],
                             "entity_id": entity_id, "unit": pc.get("unit") or "",
+                            "granularity": gran,
                         }
                         if mode == "series":
                             # the handler/pipeline clamp to the plan's range
@@ -84,6 +118,7 @@ class ConceptCrawlSpider(scrapy.Spider):
                 "entity_id": response.meta["entity_id"],
                 "unit": response.meta["unit"],
                 "source_used": response.meta["source"],
+                "granularity": response.meta.get("granularity", "day"),
                 "series": json.loads(value),
                 "start": response.meta.get("start"),
                 "end": response.meta.get("end"),
@@ -97,12 +132,27 @@ class ConceptCrawlSpider(scrapy.Spider):
             "value": value,
             "unit": response.meta["unit"],
             "source_used": response.meta["source"],
+            "granularity": response.meta.get("granularity", "day"),
         }
 
 
 def _fetch_url(source, command, params):
     qs = urllib.parse.urlencode({k: str(v) for k, v in params.items() if v is not None})
     return f"fetch://{source}/{urllib.parse.quote(command)}?{qs}"
+
+
+def _granularity(frequency: str | None) -> str:
+    """Concept frequency -> observation granularity tag (day|month|year).
+
+    The observation unique key is (concept, entity, date, granularity) — the tag
+    must travel with every item so a monthly 2024-06-01 and a daily 2024-06-01 land
+    in distinct rows instead of silently colliding (fix-observation-time-granularity).
+    """
+    if frequency == "yearly":
+        return "year"
+    if frequency == "monthly":
+        return "month"
+    return "day"  # daily/weekly/None
 
 
 def _expand_dates(date_range: dict, frequency: str = "daily") -> list[str]:

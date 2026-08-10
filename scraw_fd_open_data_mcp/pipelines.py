@@ -46,6 +46,9 @@ class ObservationUpsertPipeline:
                 "concept_id": d["concept_id"], "entity_type": d["entity_type"],
                 "entity_id": d["entity_id"], "date": str(date), "value": value,
                 "unit": d.get("unit") or "", "source_used": d.get("source_used") or "",
+                # the concept's granularity travels on the item so the (…, date, granularity)
+                # unique key tags every exploded row (fix-observation-time-granularity)
+                "granularity": d.get("granularity", "day"),
             })
             kept += 1
         spider.logger.debug(

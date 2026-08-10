@@ -1,4 +1,16 @@
-name: CI/CD - Build, Push & Deploy
+# Build the scraw-fd-open-data-mcp worker image and push to Harbor.
+#
+# The image is the ONLY artifact this workflow ships. Deployment is pull-based:
+# every crawl Job + the reconciler CronJob reference
+#   harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+# with imagePullPolicy: Always, so pushing :latest here IS the deploy - the next
+# reconciler tick (<=15 min) or next crawl Job picks up the new image. No
+# kubectl, no kubeconfig secret, no Argo CD needed.
+#
+# fd-open-data-mcp is installed FROM PYPI inside the Dockerfile (default
+# FD_ODM_INSTALL=fd-open-data-mcp>=0.4.5), so bumping the Dockerfile arg + a
+# push here lands new adapters / proxy-health / multi-cluster code in the image.
+name: Build & Push image to Harbor
 
 on:
   workflow_dispatch:
@@ -8,8 +20,11 @@ on:
     branches: [main, master]
 
 env:
+  # Harbor external address (HTTP, insecure). GitHub Actions can't resolve the
+  # in-cluster harbor.local alias, so use the public IP:port.
   REGISTRY: 23.144.68.246:30880
-  IMAGE_NAME: scraw/scraw-fd-open-data-mcp
+  # lawcraw_business project = what the robot account owns + what pods pull.
+  IMAGE_NAME: lawcraw_business/scraw-fd-open-data-mcp
 
 jobs:
   build-and-push:
@@ -17,10 +32,17 @@ jobs:
     permissions:
       contents: read
       packages: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Configure Docker daemon for insecure Harbor registry
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"insecure-registries": ["${{ env.REGISTRY }}"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          sleep 3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -28,13 +50,7 @@ jobs:
           driver: docker
           buildkitd-flags: --allow-insecure-entitlement security.insecure
 
-      - name: Configure insecure registry
-        run: |
-          sudo mkdir -p /etc/docker
-          echo '{"insecure-registries": ["23.144.68.246:30880"]}' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-
-      - name: Log in to Harbor Registry
+      - name: Log in to Harbor
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -53,55 +69,17 @@ jobs:
             latest
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: true
+          # Don't pollute :latest from a PR - build only, no push.
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
+          build-args: |
+            FD_ODM_INSTALL=fd-open-data-mcp>=0.4.5
 
       - name: Image digest
-        run: echo ${{ steps.build.outputs.digest }}
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure kubectl
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
-
-      - name: Update deployment image
-        run: |
-          kubectl set image deployment/financial-crawl             crawler=23.144.68.246:30880/scraw/scraw-fd-open-data-mcp:${{ github.sha }}             -n scraw
-
-      - name: Update Kubernetes deployment manifest
-        run: |
-          # Replace image tag in deployment YAML
-          sed -i "s|image: .*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|g" \
-            k8s/deployment.yaml
-          
-          # Apply updated tag as annotation
-          cat >> k8s/deployment.yaml << YAMLEOF
-          metadata:
-            annotations:
-              deployed-at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-              deployed-by: "github-actions-${{ github.run_id }}"
-              image-tag: "${{ github.sha }}"
-          YAMLEOF
-
-      - name: Commit and push updated manifest
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/deployment.yaml
-          git commit -m "ci(deploy): update image tag to ${{ github.sha }}" || echo "No changes to commit"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+        run: echo "Pushed ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"

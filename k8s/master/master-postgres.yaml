@@ -1,0 +1,76 @@
+# Independent master Postgres (add-multi-cluster-master-db).
+# Single source of truth for crawl_policies / policy_runs / semantic_observations /
+# concepts / entities / proxies / clusters. Dedicated StatefulSet + PVC - survives
+# pod restarts. Reach the DB itself via master-pg (PgBouncer) in production, NOT
+# this Service directly (PgBouncer pools the many worker connections).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: master-postgres
+  namespace: fd-master
+  labels:
+    app: master-postgres
+spec:
+  serviceName: master-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: master-postgres
+  template:
+    metadata:
+      labels:
+        app: master-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: master-db-secret, key: POSTGRES_PASSWORD}
+        - name: POSTGRES_DB
+          value: fd_open_data
+        # WAL + checksums - the master is durable, not ephemeral.
+        - name: POSTGRES_INITDB_ARGS
+          value: "--data-checksums"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests: {memory: "512Mi", cpu: "250m"}
+          limits: {memory: "2Gi", cpu: "1000m"}
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "postgres", "-d", "fd_open_data"]
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: ["pg_isready", "-U", "postgres"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: master-postgres
+  namespace: fd-master
+spec:
+  selector:
+    app: master-postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgres
+  type: ClusterIP
