@@ -26,7 +26,7 @@ ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
- && /opt/venv/bin/pip install --no-cache-dir "scrapy>=2.12,<2.13" "Twisted<25" "akshare>=1.17" \
+ && /opt/venv/bin/pip install --no-cache-dir "scrapy>=2.12,<2.13" "Twisted<25" "akshare>=1.17" "wbgapi>=1.0" \
  && if [ -n "$FD_ODP_INSTALL" ]; then \
         /opt/venv/bin/pip install --no-cache-dir "$FD_ODP_INSTALL"; \
     fi \

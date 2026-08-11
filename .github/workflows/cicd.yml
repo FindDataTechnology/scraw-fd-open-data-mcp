@@ -11,10 +11,11 @@
 # FD_ODM_INSTALL=fd-open-data-mcp>=0.4.5), so bumping the Dockerfile arg + a
 # push here lands new adapters / proxy-health / multi-cluster code in the image.
 #
-# The buildx setup mirrors scraw-ops/docker-publish.yml (the proven-working
-# config): Harbor serves HTTP only, so buildkitd-config-inline MUST declare
-# http=true for the registry or the blob-upload push fails with "unauthorized"
-# even though docker login succeeded.
+# No buildx/buildkit driver: build-push-action runs on the default docker
+# daemon driver, whose push path is proven against this HTTP-only Harbor
+# (direct `docker push` from the Harbor box succeeded). buildkit's own push
+# path 401s on the blob-existence HEAD request with HTTP registries, so we
+# avoid it. The daemon.json step below marks the registry insecure.
 name: Build & Push image to Harbor
 
 on:

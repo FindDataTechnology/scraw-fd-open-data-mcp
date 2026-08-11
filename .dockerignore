@@ -1,0 +1,12 @@
+.venv/
+.git/
+.github/
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+output/
+data/
+*.db
+.env
+.DS_Store
