@@ -34,6 +34,11 @@ CONCURRENT_REQUESTS_PER_DOMAIN = 2
 RETRY_TIMES = 2
 DOWNLOADER_TIMEOUT = 30
 
+# Default to INFO: urllib3 connectionpool DEBUG lines print the full request URL
+# (query string included), which leaks credentials like the DC_API_KEY used by
+# the datacommons adapter. Override per-run via the LOG_LEVEL env var if needed.
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+
 # Item pipelines
 ITEM_PIPELINES = {
     "scraw_fd_open_data_mcp.pipelines.ObservationUpsertPipeline": 300,

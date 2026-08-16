@@ -19,7 +19,13 @@ class ObservationUpsertPipeline:
       idempotent upsert (design D6).
     """
 
-    BATCH = 500
+    # Flush every 50 items, not 500. A long crawl (the country-macro yearly
+    # sweep is ~1650 fetches / ~60min) must NOT hold all progress in memory
+    # until spider-close: if the process is killed (SIGTERM/SIGKILL, OOM, pod
+    # eviction), an unflushed buffer is lost entirely. 50 keeps DB round-trips
+    # trivial (one execute_values per ~2min) while bounding loss-on-kill to
+    # ~2min of work. close_spider still flushes the final partial batch.
+    BATCH = 50
 
     def __init__(self):
         self._buffer: list[dict] = []
