@@ -1,0 +1,36 @@
+# One-shot schema bootstrap for the master control-plane DB.
+#
+# Creates all ontology tables (concepts, entities, bindings, functions, sources,
+# crawl_policies, policy_runs, proxies, semantic_observations, clusters, ...) via
+# SQLAlchemy create_all + adds the add-multi-cluster-master-db columns
+# (policy_runs.cluster_id, proxies.cluster_id). Idempotent - safe to re-run.
+#
+# Apply after the master stack is up:
+#   kubectl apply -f k8s/master/migrate-job.yaml
+#   kubectl logs job/master-migrate -n fd-master
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: master-migrate
+  namespace: fd-master
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      imagePullSecrets:
+      - name: fd-harbor-pull
+      containers:
+      - name: migrate
+        image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+        imagePullPolicy: Always
+        command: ["python", "-m", "fd_open_data_mcp.migrate"]
+        env:
+        - name: FD_OPEN_DATA_MCP_DATABASE_URL
+          valueFrom:
+            secretKeyRef: {name: master-db-secret, key: DATABASE_URL}
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          requests: {memory: "128Mi", cpu: "100m"}
+          limits: {memory: "512Mi", cpu: "500m"}
