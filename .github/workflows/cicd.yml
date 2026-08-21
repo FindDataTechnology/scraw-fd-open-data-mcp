@@ -92,7 +92,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            FD_ODM_INSTALL=fd-open-data-mcp>=0.4.5
+            FD_ODM_INSTALL=fd-open-data-mcp>=0.4.7
 
       - name: Image digest
         run: echo "Pushed ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
