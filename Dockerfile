@@ -11,8 +11,18 @@
 # scraw-fd-open-data-mcp itself is vendored (it's the crawler, not on PyPI).
 #
 # Pins: scrapy>=2.12,<2.13 (2.13+ broke start_requests + sync download_handler),
-# Twisted<25 (removed _setAcceptableProtocols that scrapy 2.12 needs), akshare
-# (optional extra in fd-open-data-mcp - install explicitly).
+# Twisted<25 (removed _setAcceptableProtocols that scrapy 2.12 needs).
+# fd-open-data-mcp's [data] extra pulls ALL data-source deps (akshare, wbgapi,
+# yfinance, edgartools, ...) so adding a data source to pyproject.toml [data]
+# is all that's needed - no Dockerfile edit, no per-package maintenance.
+#
+# fix-silent-zero-yield-crawls task 7.1: the data deps themselves are pinned
+# BELOW (after the fd-open-data-mcp install) so a rebuild can no longer
+# silently move the fleet's dependency set. akshare/pandas are the versions
+# verified working from the cluster on 2026-08-24 — the 08-22 rebuild had
+# moved akshare 1.18.83 -> 1.18.94 and pandas -> 3.0.5 under an unpinned
+# :latest. Bump these pins DELIBERATELY (verify a snapshot call from a worker
+# after any bump), never implicitly.
 
 FROM python:3.12-slim AS builder
 WORKDIR /build
@@ -20,17 +30,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libssl-dev libffi-dev git && rm -rf /var/lib/apt/lists/*
 COPY . /build/scraw-fd-open-data-mcp
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp>=0.4.8"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.4.8"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
- && /opt/venv/bin/pip install --no-cache-dir "scrapy>=2.12,<2.13" "Twisted<25" "akshare>=1.17" "wbgapi>=1.0" \
+ && /opt/venv/bin/pip install --no-cache-dir "scrapy>=2.12,<2.13" "Twisted<25" \
  && if [ -n "$FD_ODP_INSTALL" ]; then \
         /opt/venv/bin/pip install --no-cache-dir "$FD_ODP_INSTALL"; \
     fi \
  && /opt/venv/bin/pip install --no-cache-dir "$FD_ODM_INSTALL" \
+ && /opt/venv/bin/pip install --no-cache-dir \
+      "akshare==1.18.94" \
+      "pandas==3.0.5" \
  && /opt/venv/bin/pip install --no-cache-dir "$FD_CNREPORT_INSTALL" \
  && /opt/venv/bin/pip install --no-cache-dir /build/scraw-fd-open-data-mcp \
  # fd-cn-report's rules_db auto-seeds from indicator_rules.json; the flat-py-module

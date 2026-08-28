@@ -1,0 +1,68 @@
+# Crawl-watcher daily digest (add-crawl-visibility).
+#
+# Runs once a day at 08:00 Asia/Shanghai (= `0 0 * * *` UTC) on the CONTROL
+# cluster (guangzhou-xinru k3s, fd-master namespace). Builds the shared
+# datasource-centric snapshot (recent runs, per-real_source ok/err + circuit
+# state, fleet health, stale runs, today's scheduled policies projected to
+# target datasources) and sends ONE WeChat message (ServerChan).
+#
+# The snapshot is SHARED with the `crawl_status` MCP tool, so the on-demand
+# "ask Claude what the scraw is doing" answer matches this digest exactly
+# (spec crawl-control-center: one snapshot-building function, two callers).
+#
+# Apply AFTER the reconciler stack + crawl-watcher-secret exist:
+#   kubectl apply -f k8s/crawl-watcher-digest-cronjob.yaml
+# Run one digest manually:
+#   kubectl create job --from=cronjob/crawl-watcher-digest crawl-watcher-digest-manual -n fd-master
+#
+# Requires:
+#   - fd-db-secret (DATABASE_URL, REDIS_URL) — same as the reconciler
+#   - crawl-watcher-secret (SCRAW_WATCHER_SCT_TOKEN) — ServerChan token
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: crawl-watcher-digest
+  namespace: fd-master
+  labels:
+    app: crawl-watcher
+    component: digest
+spec:
+  schedule: "0 0 * * *"               # 00:00 UTC = 08:00 Asia/Shanghai
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          imagePullSecrets:
+          - name: fd-harbor-pull
+          containers:
+          - name: watcher-digest
+            image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+            imagePullPolicy: Always
+            command: ["python", "-m", "fd_open_data_mcp.visibility.digest"]
+            env:
+            - name: FD_OPEN_DATA_MCP_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: DATABASE_URL}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: REDIS_URL}
+            - name: SCRAW_NOTIFIER
+              value: "wechat"
+            - name: SCRAW_WATCHER_SCT_TOKEN
+              valueFrom:
+                secretKeyRef: {name: crawl-watcher-secret, key: SCRAW_WATCHER_SCT_TOKEN}
+            # The digest's "today" + next-fire projection timezone.
+            - name: SCRAW_DIGEST_TZ
+              value: "Asia/Shanghai"
+            # Stale-run threshold surfaced in the digest's STALE line.
+            - name: SCRAW_STALE_MINUTES
+              value: "90"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            resources:
+              requests: {memory: "128Mi", cpu: "100m"}
+              limits: {memory: "512Mi", cpu: "500m"}

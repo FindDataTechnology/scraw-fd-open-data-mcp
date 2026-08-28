@@ -1,7 +1,8 @@
-# Crawl-policy reconciler (add-multi-cluster-master-db).
+# Crawl-policy reconciler (add-multi-cluster-master-db; repointed to guangzhou-xinru).
 #
-# Runs on the MASTER cluster (US) in the fd-master namespace, next to master-pg +
-# master-redis. Every 15 minutes: close finished policy_runs, then for each enabled
+# Runs on the CONTROL cluster (guangzhou-xinru k3s) in the fd-master namespace,
+# against the canonical host-docker fd-postgres :30432 + fd-redis :30380 (mesh
+# 100.64.0.3). Every 15 minutes: close finished policy_runs, then for each enabled
 # crawl_policies row whose cron is due (policy timezone) and has no open run, compile
 # a CrawlPlan and dispatch it to a worker cluster via MultiClusterLauncher (picks a
 # cluster by tags + circuit state + load; creates a ConfigMap + Job on that remote
@@ -65,6 +66,7 @@ metadata:
     app: crawl-reconciler
 spec:
   schedule: "7,22,37,52 * * * *"   # every 15 min, off the :00/:15/:30/:45 marks
+  suspend: true                    # deployed SUSPENDED on xinru; unsuspend after worker-side proxy-fw re-apply (add-proxy-service 10.x)
   concurrencyPolicy: Forbid        # one tick at a time (single-flight is per-policy)
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -86,20 +88,21 @@ spec:
             # Workers use the SAME endpoint (SCRAW_K8S_DATABASE_URL below).
             - name: FD_OPEN_DATA_MCP_DATABASE_URL
               valueFrom:
-                secretKeyRef: {name: master-db-secret, key: DATABASE_URL}
+                secretKeyRef: {name: fd-db-secret, key: DATABASE_URL}
             - name: REDIS_URL
               valueFrom:
-                secretKeyRef: {name: master-redis-secret, key: REDIS_URL}  # redis://:pw@master-redis.fd-master:6379/0
+                secretKeyRef: {name: fd-db-secret, key: REDIS_URL}  # redis://:pw@100.64.0.3:30380/0 (xinru fd-redis db0)
             - name: RECONCILER_LAUNCHER
               value: "k8s-multi"
-            # The DB + Redis URLs the worker Jobs use (master PgBouncer + master Redis).
+            # The DB + Redis URLs the worker Jobs use — same canonical xinru
+            # endpoints (mesh 100.64.0.3), reachable from pods on every mesh node.
             # MultiClusterLauncher injects these into every spawned crawl Job.
             - name: SCRAW_K8S_DATABASE_URL
               valueFrom:
-                secretKeyRef: {name: master-db-secret, key: DATABASE_URL}
+                secretKeyRef: {name: fd-db-secret, key: DATABASE_URL}
             - name: SCRAW_K8S_REDIS_URL
               valueFrom:
-                secretKeyRef: {name: master-redis-secret, key: REDIS_URL}
+                secretKeyRef: {name: fd-db-secret, key: REDIS_URL}
             - name: KUBECONFIG_DIR
               value: "/kubeconfigs"
             - name: POLICY_MAX_FETCHES

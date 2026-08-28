@@ -66,11 +66,11 @@ kubectl create secret docker-registry harbor-registry-secret \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Create application secrets
-DATABASE_URL="postgresql+psycopg2://admin:admin123@192.168.1.4:5433/postgres"
+DATABASE_URL="postgresql+psycopg2://fd:FD_PG_PASSWORD@guangzhou-xinru:30432/fd_open_data"  # real pw: guangzhou-xinru:/etc/fd-open-data/db-credentials.env
 kubectl create secret generic fd-open-data-secrets \
   --namespace=fd-open-data \
   --from-literal=DATABASE_URL="${DATABASE_URL}" \
-  --from-literal=REDIS_URL="redis://192.168.1.4:6379/0" \
+  --from-literal=REDIS_URL="redis://:FD_REDIS_PASSWORD@guangzhou-xinru:30380/0" \
   --from-literal=SCRAPYD_URL="http://scrapyd.scrapyd-ops:6800" \
   --dry-run=client -o yaml | kubectl apply -f -
 

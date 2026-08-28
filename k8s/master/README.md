@@ -24,7 +24,9 @@
 #   kubectl create secret generic master-redis-secret -n fd-master \
 #     --from-literal=REDIS_PASSWORD='<strong-password>'
 #
-# Migrate the existing control-plane data in ONCE:
+# Migrate the existing control-plane data in ONCE (HISTORICAL 2026-08-11 -- the
+# LAN source 192.168.1.4 is retired read-only since 2026-08-18; everything now
+# lives in the canonical DB on guangzhou-xinru :30432):
 #   pg_dump -h 192.168.1.4 -p 5433 -U postgres postgres \
 #     -t crawl_policies -t policy_runs -t semantic_observations -t concepts \
 #     -t concept_bindings -t sources -t functions -t ... \

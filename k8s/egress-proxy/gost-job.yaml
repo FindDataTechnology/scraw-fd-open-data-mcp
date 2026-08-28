@@ -1,0 +1,85 @@
+# Per-server gost forward-proxy — SA-compatible hostNetwork Job form.
+#
+# WHY A JOB, NOT A DEPLOYMENT: the worker clusters' crawl-worker ServiceAccount
+# (the one the reconciler dispatches through, and the only identity we hold for
+# tencent/aliyun) can create ConfigMaps + Jobs only — NOT Deployments or
+# Services (verified via `kubectl auth can-i`). So gost runs as a hostNetwork
+# Job: `hostNetwork: true` binds the node's primary IP directly on :30080,
+# making the proxy reachable cross-cluster at
+#   http://fdproxy:<auth>@<server-ip>:30080
+# with NO Service required. Port 30080 is preserved on purpose so the seeded
+# Proxy rows in seed.py (EGRESS_PODS, port 30080) stay correct unchanged.
+#
+# gost never exits → the Job pod stays Running (restartPolicy:OnFailure re-runs
+# it if it ever crashes; backoffLimit guards the loop). When a cluster-admin
+# kubeconfig is available, prefer gost-deployment.yaml (proper Deployment
+# self-healing + NodePort Service) — same port + same auth.
+#
+# Apply to each worker cluster's scraw ns with that cluster's SA kubeconfig:
+#   kubectl --kubeconfig <worker-kubeconfig> -n scraw apply -f gost-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gost-proxy
+  namespace: scraw
+  labels:
+    app: gost-proxy
+spec:
+  backoffLimit: 20
+  ttlSecondsAfterFinished: 86400   # keep the pod around if it ever completes
+  template:
+    metadata:
+      labels:
+        app: gost-proxy
+    spec:
+      # Own the node's IP directly: egress = server's own IP, decoupled from
+      # where crawl-worker pods land. Also makes the listener reachable at
+      # <server-ip>:30080 without a Service (the SA can't create Services).
+      hostNetwork: true
+      # CRITICAL: override DNS. hostNetwork pods get kubelet-derived resolv.conf
+      # which on aliyun contains only the dead VPC nameservers (100.100.2.136/138
+      # — confirmed timing out on direct dig 2026-08-19). gost needs working DNS
+      # to resolve CONNECT targets. Use public CN DNS (AliDNS/119.29.29.29).
+      dnsPolicy: None
+      dnsConfig:
+        nameservers:
+        - "223.5.5.5"
+        - "119.29.29.29"
+      restartPolicy: OnFailure
+      containers:
+      - name: gost
+        image: harbor.local/lawcraw_business/gost:latest   # mirrored via skopeo
+        imagePullPolicy: Always
+        # HTTP forward proxy (HTTP CONNECT for https) with basic auth on :30080.
+        # Auth MUST match the proxies.auth seeded by seed.py (read from
+        # FD_EGRESS_AUTH at seed time). The public :30080 is not an open relay
+        # because of the basic auth. CHANGE_ME is a placeholder — before
+        # applying, substitute the real FD_EGRESS_AUTH from
+        # /etc/fd-open-data/db-credentials.env (on guangzhou-xinru) so gost's
+        # listener auth matches the seeded proxies.auth. The crawl-worker SA on
+        # worker clusters cannot create Secrets, so the auth is substituted at
+        # apply time, not via a secretKeyRef (same posture as __REDIS_PW__ /
+        # __PG_PW__ in proxy-fw-job.yaml).
+        args:
+        - "-L"
+        - "http://fdproxy:CHANGE_ME@:30080"
+        ports:
+        - containerPort: 30080
+          name: proxy
+        readinessProbe:
+          tcpSocket:
+            port: 30080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: 30080
+          initialDelaySeconds: 15
+          periodSeconds: 15
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

@@ -18,13 +18,14 @@ IMAGE_NAME="${REGISTRY}/${HARBOR_PROJECT}/scraw-fd-open-data-mcp"
 HARBOR_USER="robot\$lawcraw_business"
 HARBOR_PASS="REDACTED-HARBOR-ROBOT-PASSWORD"
 
-# Kubernetes config
-PG_HOST="192.168.1.4"
-PG_PORT="5433"
-PG_USER="admin"
-PG_PASS="admin123"
-PG_DB="postgres"
-REDIS_URL="redis://192.168.1.4:6379/0"
+# Canonical store on guangzhou-xinru (mesh peers reach it by name; real
+# passwords live in guangzhou-xinru:/etc/fd-open-data/db-credentials.env)
+PG_HOST="guangzhou-xinru"
+PG_PORT="30432"
+PG_USER="fd"
+PG_PASS="FD_PG_PASSWORD"
+PG_DB="fd_open_data"
+REDIS_URL="redis://:FD_REDIS_PASSWORD@guangzhou-xinru:30380/0"
 SCRAPYD_URL="http://scrapyd.scrapyd-ops:6800"
 
 echo -e "${GREEN}========================================${NC}"

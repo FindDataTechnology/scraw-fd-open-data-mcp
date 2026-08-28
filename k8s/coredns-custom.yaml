@@ -1,0 +1,54 @@
+# coredns-custom: authoritative NXDOMAIN for the mesh DNS zone.
+#
+# WHY: kubelet appends the node's search domains to every ClusterFirst pod's
+# resolv.conf — on the mesh nodes tailscale contributes `mesh.finddata.cn` —
+# and with the cluster's `ndots:5`, libc tries EVERY external hostname as
+# `<host>.mesh.finddata.cn` before the absolute name. Public DNS carries a
+# wildcard `*.finddata.cn` -> 8.218.137.223 (empirically confirmed 2026-08-19:
+# a ClusterFirst pod on aliyun resolved a fresh `<x>.mesh.finddata.cn` name to
+# that IP through the full cluster DNS chain), so every search-appended lookup
+# gets a POSITIVE poisoned answer and libc never falls through to the real
+# name. Crawl pods connected to the wrong server and hung (run-49 aliyun
+# failures; curl through gost returned 000).
+#
+# FIX: make CoreDNS answer NXDOMAIN for the zone itself, so the search-appended
+# branch fails instantly and libc proceeds to the absolute name, which forwards
+# upstream normally.
+#
+# FILE LAYOUT MATTERS — the first attempt (2026-08-19) crashlooped coredns:
+# k3s's Corefile imports `*.override` files INSIDE the `.:53` server block
+# (`import /etc/coredns/custom/*.override` sits just before `forward`) and
+# `*.server` files at top level. An `.override` file must therefore contain
+# BARE PLUGIN DIRECTIVES — putting a `mesh.finddata.cn:53 { ... }` server-block
+# wrapper inside the .:53 block is a Corefile parse error.
+#
+# A + AAAA cover everything libc/requests/curl query. No ANY stanza — the
+# template plugin's ANY semantics are version-dependent, and it would only
+# add risk for qtypes nothing in the stack issues.
+#
+# Apply + pick up (the reload plugin watches imports, but restart to be
+# deterministic):
+#   kubectl apply -f coredns-custom.yaml
+#   kubectl -n kube-system rollout restart deploy coredns
+#
+# Trade-off: pods can no longer resolve MagicDNS names via cluster DNS.
+# Nothing in the crawl stack does (all control-plane endpoints are IP
+# literals — 100.64.0.3 for the canonical DB/Redis, mesh IPs for the gost
+# egresses); use IP literals if a pod ever needs a mesh name.
+#
+# Rollback if coredns crashloops:
+#   kubectl -n kube-system delete configmap coredns-custom
+#   kubectl -n kube-system rollout restart deploy coredns
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  mesh-nxdomain.override: |
+    template IN A mesh.finddata.cn {
+        rcode NXDOMAIN
+    }
+    template IN AAAA mesh.finddata.cn {
+        rcode NXDOMAIN
+    }

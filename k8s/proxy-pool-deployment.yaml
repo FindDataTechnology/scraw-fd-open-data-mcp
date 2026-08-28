@@ -6,7 +6,11 @@ metadata:
   labels:
     app: proxy-pool
 spec:
-  replicas: 1
+  # RETIRED 2026-08-17: the free-proxy pool filled the `proxies` table with dead
+  # free proxies that break akshare/eastmoney. Egress is now the decoupled gost
+  # forward-proxy pool (k8s/egress-proxy/gost-deployment.yaml + seed_egress_pods).
+  # Kept on disk at replicas:0 as a retirement record; do NOT re-enable.
+  replicas: 0
   selector:
     matchLabels:
       app: proxy-pool

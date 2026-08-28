@@ -1,0 +1,74 @@
+# Crawl-watcher failure + stale-run scan (add-crawl-visibility).
+#
+# Runs on the CONTROL cluster (guangzhou-xinru k3s) in the fd-master namespace,
+# against the canonical host-docker fd-postgres :30432 + fd-redis :30380 (mesh
+# 100.64.0.3) — the SAME endpoints the crawl-reconciler uses. Cadence
+# `10,25,40,55 * * * *` is offset 3 min AFTER the reconciler ticks at
+# `:07/:22/:37/:52`, so the scan reads the freshest post-tick state rather than
+# racing the writer.
+#
+# Each tick: read policy_runs past the scan watermark, detect newly-failed /
+# newly-refused / newly-stale runs, dedup via Redis (each (run,event) alerted
+# once, 7-day TTL), batch ALL new events in the window into ONE WeChat message
+# (ServerChan), advance the watermark. READ-ONLY — never mutates crawl state.
+#
+# Apply AFTER the reconciler stack + crawl-watcher-secret exist:
+#   kubectl apply -f k8s/crawl-watcher-scan-cronjob.yaml
+# Run one tick manually:
+#   kubectl create job --from=cronjob/crawl-watcher-scan crawl-watcher-scan-manual -n fd-master
+#
+# Requires:
+#   - fd-db-secret (DATABASE_URL, REDIS_URL) — same as the reconciler
+#   - crawl-watcher-secret (SCRAW_WATCHER_SCT_TOKEN) — ServerChan token
+#     kubectl create secret generic crawl-watcher-secret -n fd-master \
+#       --from-literal=SCRAW_WATCHER_SCT_TOKEN=<sct.ftqq.com token>
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: crawl-watcher-scan
+  namespace: fd-master
+  labels:
+    app: crawl-watcher
+    component: scan
+spec:
+  schedule: "10,25,40,55 * * * *"   # 3 min after reconciler :07/:22/:37/:52
+  concurrencyPolicy: Forbid          # one tick at a time
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          imagePullSecrets:
+          - name: fd-harbor-pull
+          containers:
+          - name: watcher-scan
+            image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+            imagePullPolicy: Always
+            command: ["python", "-m", "fd_open_data_mcp.visibility.scan"]
+            env:
+            # Master control-plane DB + Redis (single source of truth) — same
+            # secret the reconciler reads. Read-only here: the watcher never
+            # writes to policy_runs / fetch_log.
+            - name: FD_OPEN_DATA_MCP_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: DATABASE_URL}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: REDIS_URL}
+            # Notifier sink: ServerChan → WeChat. Token is a dedicated secret
+            # (never in the image or git). Unknown/missing → NullNotifier no-op.
+            - name: SCRAW_NOTIFIER
+              value: "wechat"
+            - name: SCRAW_WATCHER_SCT_TOKEN
+              valueFrom:
+                secretKeyRef: {name: crawl-watcher-secret, key: SCRAW_WATCHER_SCT_TOKEN}
+            # Stale-run threshold: a run 'running' longer than this is flagged.
+            - name: SCRAW_STALE_MINUTES
+              value: "90"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            resources:
+              requests: {memory: "128Mi", cpu: "100m"}
+              limits: {memory: "512Mi", cpu: "500m"}

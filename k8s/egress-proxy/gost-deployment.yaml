@@ -1,0 +1,93 @@
+# Per-server gost forward-proxy pod (decoupled egress pool).
+#
+# Applied to EACH worker cluster's scraw namespace (tencent, aliyun, baidu):
+#   kubectl apply -f k8s/egress-proxy/gost-deployment.yaml
+#
+# `hostNetwork: true` + `dnsPolicy: ClusterFirstWithHostNetwork` → the pod's
+# egress IS the node's primary IP (the server's own IP), no CNI NAT. Each cloud
+# server is a single-node cluster, so hostNetwork = that server's IP. A crawl
+# worker pod running on ANY node can route its HTTP through ANY cluster's gost
+# NodePort (30080) → the egress IP is decoupled from where the worker lands.
+#
+# The gost listener is an HTTP forward proxy with basic auth (HTTP CONNECT for
+# https), so the public NodePort is not an open relay. The auth credential here
+# MUST match the `Proxy.auth` seeded by `seed_egress_pods` in
+# `fd_open_data_mcp/proxy/seed.py` (`_DEFAULT_EGRESS_AUTH`, overridable via the
+# `FD_EGRESS_AUTH` env). For prod, set a strong password via a k8s Secret and
+# override both sides.
+#
+# Master (23.144.68.246) runs NO gost — it is the control plane only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gost-proxy
+  namespace: scraw
+  labels:
+    app: gost-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gost-proxy
+  template:
+    metadata:
+      labels:
+        app: gost-proxy
+    spec:
+      # Own the node's IP directly: egress = server's own IP, decoupled from
+      # where crawl-worker pods land.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNetwork
+      containers:
+      - name: gost
+        image: harbor.local/lawcraw_business/gost:latest
+        imagePullPolicy: Always
+        # gost image mirrored into Harbor (pushed from docker.io/gogost/gost via
+        # skopeo) so the China-based worker clusters don't depend on Docker Hub.
+        # HTTP forward proxy with basic auth on :8080. Supports HTTP CONNECT for
+        # https tunneling. Auth matches the proxies.auth seeded by seed.py
+        # (_DEFAULT_EGRESS_AUTH, overridable via FD_EGRESS_AUTH). CHANGE_ME is a
+        # placeholder — substitute the real FD_EGRESS_AUTH before applying so the
+        # gost listener auth matches the seeded proxies.auth (public NodePort
+        # 30080 must not ship a known default).
+        args:
+        - "-L"
+        - "http://fdproxy:CHANGE_ME@:8080"
+        ports:
+        - containerPort: 8080
+          name: proxy
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 15
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+# ClusterIP for in-cluster reachability (worker → gost-proxy:8080) AND NodePort
+# 30080 for cross-cluster reachability (worker in cluster A → <serverB-ip>:30080).
+apiVersion: v1
+kind: Service
+metadata:
+  name: gost-proxy
+  namespace: scraw
+spec:
+  selector:
+    app: gost-proxy
+  type: NodePort
+  ports:
+  - name: proxy
+    port: 8080
+    targetPort: 8080
+    nodePort: 30080
+    protocol: TCP

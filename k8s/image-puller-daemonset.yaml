@@ -1,0 +1,34 @@
+# image-puller: keeps harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+# present on every REGISTRY-CAPABLE node (the control-plane node here), because
+# crawl Jobs run with imagePullPolicy=IfNotPresent — preloaded-only worker
+# nodes (pool=cheap, scraw.io/preloaded=true) can't reach the registry and run
+# whatever was preloaded; registry-capable nodes must therefore refresh the
+# local :latest out-of-band, which this DaemonSet does on every resync.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: scraw-image-puller
+  namespace: scraw
+  labels: {app: scraw-image-puller}
+spec:
+  selector:
+    matchLabels: {app: scraw-image-puller}
+  template:
+    metadata:
+      labels: {app: scraw-image-puller}
+      annotations:
+        # re-pull at least daily even without pod changes
+        kubectl.kubernetes.io/default-container: puller
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+        - {key: node-role.kubernetes.io/control-plane, effect: NoSchedule, operator: Exists}
+      containers:
+        - name: puller
+          image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+          imagePullPolicy: Always
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests: {memory: "32Mi", cpu: "10m"}
+            limits: {memory: "64Mi"}

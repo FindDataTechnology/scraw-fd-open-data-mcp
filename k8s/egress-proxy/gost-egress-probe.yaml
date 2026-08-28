@@ -1,0 +1,40 @@
+# In-cluster egress probe: does a worker pod reach gost and egress the server IP?
+# Launched on a worker cluster (SA can create Jobs). Prints the egress IP for
+# each path so we can tell hostNetwork-gost from SLB/Kong interception.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gost-egress-probe
+  namespace: scraw
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: probe
+        image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+        imagePullPolicy: Always
+        command: ["python", "-c"]
+        args:
+        - |
+          import os, requests
+          # CHANGE_ME placeholder — substitute real FD_EGRESS_AUTH before
+          # running the probe so it matches the gost listener + seeded proxies.auth.
+          auth = "http://fdproxy:CHANGE_ME@{}:30080"
+          def probe(label, proxies):
+              for k in ("http_proxy","https_proxy","HTTP_PROXY","HTTPS_PROXY"):
+                  os.environ[k] = proxies if proxies else ""
+              try:
+                  r = requests.get("https://ifconfig.me", timeout=12)
+                  print(f"{label:28s} -> {r.status_code} {r.text.strip()[:50]}")
+              except Exception as e:
+                  print(f"{label:28s} -> ERR {type(e).__name__}: {str(e)[:140]}")
+          # 1. direct (no proxy) = the pod's own egress IP baseline
+          probe("direct (no proxy)", None)
+          # 2. through gost at the gost pod IP (hostNetwork => node private IP)
+          probe("gost @ podIP 172.31.165.151", auth.format("172.31.165.151"))
+          # 3. through gost at the node public IP (SLB path)
+          probe("gost @ public 47.99.94.85", auth.format("47.99.94.85"))
+          # 4. localhost (only works if this pod were hostNetwork; expect fail)
+          probe("gost @ localhost", auth.format("localhost"))
