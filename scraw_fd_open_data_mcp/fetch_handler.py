@@ -31,6 +31,7 @@ The spider's parse + pipeline explode it into per-date observations.
 from __future__ import annotations
 
 import json
+import os
 
 from scrapy.http import TextResponse
 
@@ -102,6 +103,23 @@ def _extract_series(adapter, result, column, start, end):
     return None
 
 
+def _build_snapshot_params(adapter, command, date, column):
+    """Params for a bulk_snapshot call: no identifier — one call covers every
+    entity (fix-silent-zero-yield-crawls D6). Rank-frame adapters' build_params
+    ignores the identifier anyway; passing None keeps them on their {} shape."""
+    if adapter:
+        return adapter.build_params(_FnStub(command), None, date, _BindingStub(column))
+    return {"date": date} if date else {}
+
+
+def _extract_snapshot(adapter, result, column, date):
+    """``{identifier: value}`` for the full entity cross-section, or None when
+    the adapter cannot serve snapshots (no key column / no support)."""
+    if adapter and hasattr(adapter, "extract_snapshot"):
+        return adapter.extract_snapshot(result, column, date)
+    return None
+
+
 class FetchHandler:
     """Download handler for ``fetch://`` requests -> instrumented adapter fetch."""
 
@@ -130,24 +148,60 @@ class FetchHandler:
         entity_type = m.get("entity_type")
         entity_id = m.get("entity_id")
         series_mode = date is None
+        snapshot_mode = bool(m.get("snapshot"))
         start, end = m.get("start"), m.get("end")
 
         # The source chain to try: explicit ranked_sources in meta, else the single source.
         chain = m.get("ranked_sources") or [
-            {"source": m["source"], "command": m["command"], "column_name": m["column"]}
+            {"source": m["source"], "command": m["command"], "column_name": m["column"],
+             "function_id": m.get("function_id")}
         ]
+
+        # Per-(cluster, function) demotion (fix-silent-zero-yield-crawls D5):
+        # entries whose endpoint is known-blocked from THIS cluster's egress
+        # move to the end of the chain — still probed (that's how they
+        # restore), never preferred over a reachable alternative. Keyed on
+        # function, never on source: one source spans reachable and blocked
+        # hosts simultaneously.
+        cluster_id = None
+        raw_cluster = os.environ.get("SCRAW_CLUSTER_ID")
+        if raw_cluster:
+            try:
+                cluster_id = int(raw_cluster)
+            except ValueError:
+                cluster_id = None
+        if cluster_id is not None and not snapshot_mode:
+            from fd_open_data_mcp.db import get_database
+            from fd_open_data_mcp.fetch.demote import reorder_chain
+            s = get_database().get_session()
+            try:
+                healthy, demoted = reorder_chain(s, cluster_id, chain)
+                chain[:] = healthy + demoted
+            except Exception:  # noqa: BLE001 - demotion must never break a fetch
+                spider.logger.warning("demotion lookup failed; using configured rank",
+                                      exc_info=True)
+            finally:
+                s.close()
 
         last_err = None
         for rs in chain:
             source, command, column = rs["source"], rs["command"], rs.get("column_name") or m["column"]
+            function_id = rs.get("function_id") or m.get("function_id")
             adapter = adapter_for(source, command)
-            params = (_build_series_params(adapter, command, identifier, start, end, column)
-                      if series_mode else
-                      _build_params(adapter, command, identifier, date, column))
+            if snapshot_mode:
+                # D6: one call returns the full entity cross-section for this
+                # date — no identifier param; the returned frame is filtered to
+                # the requested entity scope by the caller (spider parse).
+                params = _build_snapshot_params(adapter, command, date, column)
+            else:
+                params = (_build_series_params(adapter, command, identifier, start, end, column)
+                          if series_mode else
+                          _build_params(adapter, command, identifier, date, column))
             try:
                 result = instrumented_fetch(
                     source, command, params,
                     concept_id=concept_id, entity_type=entity_type, entity_id=entity_id,
+                    function_id=function_id,
                 )
             except SourceUnavailable:
                 spider.logger.info("source %s unavailable (all proxies OPEN) - failover", source)
@@ -157,6 +211,19 @@ class FetchHandler:
                 spider.logger.warning("fetch failed %s/%s: %s", source, command, e)
                 last_err = str(e)
                 continue  # next source
+            if snapshot_mode:
+                frame = _extract_snapshot(adapter, result, column, date)
+                if frame:
+                    return TextResponse(
+                        request.url, status=200,
+                        body=json.dumps(frame, ensure_ascii=False, default=str).encode(),
+                        request=request,
+                    )
+                if frame is None:
+                    # adapter cannot serve snapshots - try next source
+                    last_err = f"{source}/{command} has no snapshot extraction"
+                    continue
+                continue  # empty frame from this source - try the next source
             if series_mode:
                 series = _extract_series(adapter, result, column, start, end)
                 if series:

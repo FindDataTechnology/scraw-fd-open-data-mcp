@@ -48,7 +48,8 @@ def test_monthly_series_explode_tags_rows_month():
         "series": {"2024-06-01": 1.5, "2024-07-01": 1.6},
         "start": "2024-01-01", "end": "2024-12-31",
     }
-    with patch("scraw_fd_open_data_mcp.db.write_observations") as mock_write:
+    with patch("scraw_fd_open_data_mcp.db.write_observations",
+              side_effect=lambda rows: (len(rows), len(rows))) as mock_write:
         pipe.process_item(item, _FakeSpider())
         pipe.close_spider(_FakeSpider())
     rows = mock_write.call_args[0][0]
@@ -61,7 +62,8 @@ def test_per_date_item_carries_granularity():
     item = {"concept_id": 378, "entity_type": "fund", "entity_id": 5369,
             "date": "2024-06-01", "value": "1.5", "unit": "CNY",
             "source_used": "akshare", "granularity": "month"}
-    with patch("scraw_fd_open_data_mcp.db.write_observations") as mock_write:
+    with patch("scraw_fd_open_data_mcp.db.write_observations",
+              side_effect=lambda rows: (len(rows), len(rows))) as mock_write:
         pipe.process_item(item, _FakeSpider())
         pipe.close_spider(_FakeSpider())
     rows = mock_write.call_args[0][0]

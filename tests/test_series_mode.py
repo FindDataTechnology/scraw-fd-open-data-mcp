@@ -121,7 +121,8 @@ def test_pipeline_explodes_and_clamps():
                    "2025-01-02": 9.8},           # out of range -> dropped
         "start": "2024-01-01", "end": "2024-12-31",
     }
-    with patch("scraw_fd_open_data_mcp.db.write_observations") as mock_write:
+    with patch("scraw_fd_open_data_mcp.db.write_observations",
+              side_effect=lambda rows: (len(rows), len(rows))) as mock_write:
         pipe.process_item(item, _FakeSpider())
         pipe.close_spider(_FakeSpider())
     rows = mock_write.call_args[0][0]
@@ -137,7 +138,8 @@ def test_pipeline_per_date_passthrough():
     pipe = ObservationUpsertPipeline()
     item = {"concept_id": 378, "entity_type": "fund", "entity_id": 5369,
             "date": "2024-01-02", "value": "1.5", "unit": "CNY", "source_used": "akshare"}
-    with patch("scraw_fd_open_data_mcp.db.write_observations") as mock_write:
+    with patch("scraw_fd_open_data_mcp.db.write_observations",
+              side_effect=lambda rows: (len(rows), len(rows))) as mock_write:
         pipe.process_item(item, _FakeSpider())
         pipe.close_spider(_FakeSpider())
     rows = mock_write.call_args[0][0]

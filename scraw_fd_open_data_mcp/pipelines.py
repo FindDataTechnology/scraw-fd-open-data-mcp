@@ -29,6 +29,17 @@ class ObservationUpsertPipeline:
 
     def __init__(self):
         self._buffer: list[dict] = []
+        # Yield accounting (fix-silent-zero-yield-crawls D2): cumulative
+        # (attempted, inserted). Persisted on EVERY flush via report_yield so
+        # a SIGKILLed pod leaves an accurate partial count — inheriting the
+        # same loss-on-kill bound as the buffer itself.
+        self._attempted = 0
+        self._new = 0
+
+    @property
+    def _job_ref(self) -> str | None:
+        import os
+        return os.environ.get("SCRAW_JOB_REF")
 
     def process_item(self, item, spider):
         d = ItemAdapter(item).asdict()
@@ -68,11 +79,25 @@ class ObservationUpsertPipeline:
     def _flush(self):
         if not self._buffer:
             return
-        from scraw_fd_open_data_mcp.db import write_observations
+        from scraw_fd_open_data_mcp.db import report_yield, write_observations
 
         # swap the buffer first so the writer holds a stable list (no aliasing)
         batch, self._buffer = self._buffer, []
-        write_observations(batch)
+        attempted, inserted = write_observations(batch)
+        self._attempted += attempted
+        self._new += inserted
+        # report the DELTA each flush, not the cumulative totals: the run row
+        # accumulates server-side, so a mid-run pod restart (fresh pipeline,
+        # zeroed counters) can never rewind the recorded yield.
+        job_ref = self._job_ref
+        if job_ref:
+            try:
+                report_yield(job_ref, attempted, inserted)
+            except Exception:  # noqa: BLE001 - never let accounting break the crawl
+                import logging
+                logging.getLogger(__name__).warning(
+                    "yield report failed (job_ref=%s): continuing crawl", job_ref,
+                    exc_info=True)
 
 
 class JsonLinesPipeline:

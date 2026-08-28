@@ -63,8 +63,35 @@ class ConceptCrawlSpider(scrapy.Spider):
         finally:
             session.close()
 
+    def _clear_stale_dupefilter(self) -> None:
+        """Clear this spider's dupefilter set on startup.
+
+        ``SCHEDULER_PERSIST=True`` (template-mandated for pause/resume) leaves
+        fingerprints in Redis after a Job ends. A subsequent cron-fired Job is a
+        FRESH crawl (not a resume), but scrapy-redis reuses the persisted set,
+        so every request is judged a duplicate and filtered - the crawl yields
+        zero items. Clearing on startup restores each Job to a clean state.
+
+        Pause/resume is unaffected: a resumed spider does not re-run
+        ``start_requests`` (scrapy-redis requeues the persisted requests list),
+        so this never fires mid-resume.
+        """
+        try:
+            import redis as _redis
+            url = self.settings.get("REDIS_URL")
+            if not url:
+                return
+            r = _redis.from_url(url)
+            key = f"{self.name}:dupefilter"
+            n = r.delete(key)
+            if n:
+                self.logger.info("cleared %d stale dupefilter fingerprints (%s)", n, key)
+        except Exception as e:  # noqa: BLE001 - never break the crawl
+            self.logger.warning("dupefilter clear failed (non-fatal): %s", e)
+
     def start_requests(self):
         self._register_egress()
+        self._clear_stale_dupefilter()
         scope = self.plan["entity_scope"]
         date_range = self.plan["date_range"]
         mode = self.plan.get("mode", "per_date")
@@ -85,6 +112,26 @@ class ConceptCrawlSpider(scrapy.Spider):
             gran = pc.get("granularity") or _granularity(pc.get("frequency"))
             self.logger.info("  concept=%s freq=%s granularity=%s -> %d dates",
                              pc.get("code"), pc.get("frequency"), gran, len(dates))
+            # D6 snapshot-first: a bulk_snapshot source returns the FULL entity
+            # cross-section in one call — emit ONE request per date (the parse
+            # callback expands the frame to per-entity items), instead of one
+            # request per (entity, date). ~1/1000th the requests for the same data.
+            snap_rs = next((rs for rs in pc["ranked_sources"] if rs.get("bulk_snapshot")), None)
+            if snap_rs is not None:
+                for date in dates:
+                    meta = {
+                        "source": snap_rs["source"], "command": snap_rs["function_command"],
+                        "identifier": None, "date": date,
+                        "column": snap_rs["column_name"],
+                        "function_id": snap_rs.get("function_id"),
+                        "concept_id": pc["concept_id"], "entity_type": pc["entity_type"],
+                        "entity_id": None, "unit": pc.get("unit") or "",
+                        "granularity": gran,
+                        "snapshot": True,
+                    }
+                    url = _fetch_url(snap_rs["source"], snap_rs["function_command"], meta)
+                    yield scrapy.Request(url, callback=self.parse, meta=meta, dont_filter=False)
+                continue
             for rs in pc["ranked_sources"]:
                 ents = _entities(self.db_url, rs["source"], scope)
                 self.logger.info("    source=%s -> %d entities", rs["source"], len(ents))
@@ -93,6 +140,7 @@ class ConceptCrawlSpider(scrapy.Spider):
                         meta = {
                             "source": rs["source"], "command": rs["function_command"],
                             "identifier": identifier, "date": date, "column": rs["column_name"],
+                            "function_id": rs.get("function_id"),
                             "concept_id": pc["concept_id"], "entity_type": pc["entity_type"],
                             "entity_id": entity_id, "unit": pc.get("unit") or "",
                             "granularity": gran,
@@ -108,6 +156,24 @@ class ConceptCrawlSpider(scrapy.Spider):
             return
         value = response.text
         if value == "":
+            return
+        if response.meta.get("snapshot"):
+            # D6: body is the full cross-section as {identifier: value} — expand
+            # to one item per entity IN THE PLAN'S SCOPE (local filtering; the
+            # adapter already extracted the column for every entity in the frame).
+            frame = json.loads(value)
+            m = response.meta
+            scope = self.plan["entity_scope"]
+            ents = _entities(self.db_url, m["source"], scope)
+            n_kept = 0
+            for entity_id, identifier in ents:
+                if identifier not in frame:
+                    continue  # entity not in this snapshot — no data for the date
+                for item in _snapshot_items(m, entity_id, identifier, frame[identifier]):
+                    yield item
+                    n_kept += 1
+            self.logger.info("snapshot %s/%s: %d frame rows -> %d in-scope items",
+                             m["source"], m["command"], len(frame), n_kept)
             return
         if response.meta["date"] is None:
             # series mode: body is the full {'YYYY-MM-DD': value} frame as JSON —
@@ -139,6 +205,29 @@ class ConceptCrawlSpider(scrapy.Spider):
 def _fetch_url(source, command, params):
     qs = urllib.parse.urlencode({k: str(v) for k, v in params.items() if v is not None})
     return f"fetch://{source}/{urllib.parse.quote(command)}?{qs}"
+
+
+def _snapshot_items(meta: dict, entity_id: int, identifier: str, value) -> list[dict]:
+    """One per-date observation item per (entity, value) from a snapshot frame.
+
+    A rank-frame snapshot has no date axis — every value is as-of the crawl
+    date — so the observation lands on the requested date (the run's date),
+    giving the upsert's (…, date, granularity) key a stable, dedupable slot.
+    A None/empty date (shouldn't happen in snapshot mode) yields no items.
+    """
+    date = meta.get("date")
+    if not date or value is None:
+        return []
+    return [{
+        "concept_id": meta["concept_id"],
+        "entity_type": meta["entity_type"],
+        "entity_id": entity_id,
+        "date": date,
+        "value": value,
+        "unit": meta.get("unit") or "",
+        "source_used": meta["source"],
+        "granularity": meta.get("granularity", "day"),
+    }]
 
 
 def _granularity(frequency: str | None) -> str:
