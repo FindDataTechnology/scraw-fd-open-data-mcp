@@ -37,7 +37,7 @@ Add these secrets:
 |------|-------|
 | `HARBOR_REGISTRY` | `23.144.68.246:30880` |
 | `HARBOR_USERNAME` | `robot$lawcraw_business` |
-| `HARBOR_PASSWORD` | `REDACTED-HARBOR-ROBOT-PASSWORD` |
+| `HARBOR_PASSWORD` | `${HARBOR_PASSWORD:-read-from-operator-creds}` |
 | `ARGOCD_SERVER` | `https://23.144.68.246:30910` |
 | `ARGOCD_USERNAME` | `admin` |
 | `ARGOCD_PASSWORD` | `eZlHCI2ieChpgswj` |
@@ -62,7 +62,7 @@ kubectl create secret docker-registry harbor-registry-secret \
   --namespace=fd-open-data \
   --docker-server=23.144.68.246:30880 \
   --docker-username='robot$lawcraw_business' \
-  --docker-password='REDACTED-HARBOR-ROBOT-PASSWORD' \
+  --docker-password='${HARBOR_PASSWORD:-read-from-operator-creds}' \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Create application secrets

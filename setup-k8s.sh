@@ -16,7 +16,7 @@ IMAGE_NAME="${REGISTRY}/${HARBOR_PROJECT}/scraw-fd-open-data-mcp"
 
 # Harbor credentials (from .env)
 HARBOR_USER="robot\$lawcraw_business"
-HARBOR_PASS="REDACTED-HARBOR-ROBOT-PASSWORD"
+HARBOR_PASS="${HARBOR_PASSWORD:-read-from-operator-creds}"
 
 # Canonical store on guangzhou-xinru (mesh peers reach it by name; real
 # passwords live in guangzhou-xinru:/etc/fd-open-data/db-credentials.env)

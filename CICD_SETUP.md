@@ -41,7 +41,7 @@ Add these secrets:
 |-------------|-------|-------------|
 | `HARBOR_REGISTRY` | `23.144.68.246:30880` | Harbor registry address |
 | `HARBOR_USERNAME` | `robot$lawcraw_business` | Robot account username |
-| `HARBOR_PASSWORD` | `REDACTED-HARBOR-ROBOT-PASSWORD` | Robot account password |
+| `HARBOR_PASSWORD` | `${HARBOR_PASSWORD:-read-from-operator-creds}` | Robot account password |
 | `ARGOCD_SERVER` | `https://23.144.68.246:30910` | Argo CD server URL |
 | `ARGOCD_USERNAME` | `admin` | Argo CD admin username |
 | `ARGOCD_PASSWORD` | `eZlHCI2ieChpgswj` | Argo CD admin password |
@@ -104,7 +104,7 @@ kubectl create secret docker-registry harbor-registry-secret \
   --namespace fd-open-data \
   --docker-server=23.144.68.246:30880 \
   --docker-username='robot$lawcraw_business' \
-  --docker-password='REDACTED-HARBOR-ROBOT-PASSWORD' \
+  --docker-password='${HARBOR_PASSWORD:-read-from-operator-creds}' \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
