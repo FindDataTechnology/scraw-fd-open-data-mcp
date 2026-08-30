@@ -74,6 +74,8 @@ spec:
               value: "8000"
             - name: COVERAGE_PAUSE_FRACTION      # systemic zero-yield/failed share -> pause
               value: "0.3"
+            - name: COVERAGE_MAX_PAUSED_GROUPS   # distinct paused GROUPS before full stop
+              value: "5"
             # Backfill depth per frequency (days) for never-crawled waves. The
             # code default maps unknown/irregular to 10y, which over-expands a
             # sparse irregular snapshot (one call per day over the window) —
