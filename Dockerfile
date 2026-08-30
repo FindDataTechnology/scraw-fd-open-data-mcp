@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libssl-dev libffi-dev git && rm -rf /var/lib/apt/lists/*
 COPY . /build/scraw-fd-open-data-mcp
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.2"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.3"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 

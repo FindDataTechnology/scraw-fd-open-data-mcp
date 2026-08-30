@@ -48,14 +48,18 @@ def write_observations(rows: Iterable[dict]) -> tuple[int, int]:
     data = [(r["concept_id"], r["entity_type"], r["entity_id"], r["date"],
              r.get("granularity") or "day", str(r["value"]),
              r.get("unit") or "", r.get("source_used") or "", now) for r in rows]
-    execute_values(cur, """
+    # execute_values(fetch=True) returns the RETURNING rows as its RETURN
+    # VALUE — they are NOT left on the cursor for a later fetchall(). Reading
+    # the cursor (the old code) always yielded 0, so every Scrapy-path run
+    # reported rows_new=0 while data landed (found live by expand-crawl-coverage
+    # wave 2: 53k observations written, counter stuck at 0).
+    inserted = len(execute_values(cur, """
         INSERT INTO semantic_observations
             (concept_id, entity_type, entity_id, date, granularity, value, unit, source_used, fetched_at)
         VALUES %s
         ON CONFLICT (concept_id, entity_type, entity_id, date, granularity) DO NOTHING
         RETURNING 1
-    """, data, fetch=True)
-    inserted = len(cur.fetchall())
+    """, data, fetch=True))
     conn.commit()
     cur.close()
     conn.close()
