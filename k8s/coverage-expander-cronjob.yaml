@@ -70,6 +70,12 @@ spec:
               value: "2"
             - name: COVERAGE_PAUSE_FRACTION      # systemic zero-yield/failed share -> pause
               value: "0.3"
+            # Backfill depth per frequency (days) for never-crawled waves. The
+            # code default maps unknown/irregular to 10y, which over-expands a
+            # sparse irregular snapshot (one call per day over the window) —
+            # pin an explicit map with irregular at 1y.
+            - name: COVERAGE_BACKFILL_DAYS
+              value: '{"daily": 90, "weekly": 180, "monthly": 730, "quarterly": 3650, "yearly": 10950, "irregular": 365, "unknown": 3650}'
             - name: SCRAW_NOTIFIER
               value: "wechat"
             - name: SCRAW_WATCHER_SCT_TOKEN
