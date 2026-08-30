@@ -30,7 +30,7 @@ metadata:
     app: coverage-expander
 spec:
   schedule: "3,13,23,33,43,53 * * * *"  # every 10 min (monitor + reschedule), off the reconciler marks
-  suspend: true                   # deployed SUSPENDED — operator unsuspends to start expansion
+  suspend: false                  # expansion LIVE since 2026-08-30 (operator-opened); re-suspend to stop
   concurrencyPolicy: Forbid       # one tick at a time
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
