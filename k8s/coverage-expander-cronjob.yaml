@@ -1,0 +1,90 @@
+# Coverage-expansion wave orchestrator (expand-crawl-coverage).
+#
+# Runs on the CONTROL cluster (guangzhou-xinru k3s) in the fd-master namespace
+# against the canonical host-docker fd-postgres :30432 + fd-redis :30380 (mesh
+# 100.64.0.3). Hourly tick: drive the active coverage wave (launch due policy
+# chunks, advance the yield gate), or plan the next wave from the live gap
+# inventory. Waves materialize as DISABLED crawl_policies launched through
+# launch_policy — the same single-flight/plan-size-guardrail path as
+# policy_trigger_now; the reconciler (15-min cadence) closes their runs.
+#
+# Deployed SUSPENDED (spec crawl-coverage-expansion: expansion is
+# operator-gated). To start expansion:
+#   kubectl patch cronjob coverage-expander -n fd-master -p '{"spec":{"suspend":false}}'
+# To stop expansion: patch suspend back to true (in-flight wave runs finish
+# under normal accounting). To resume after a pause-gate:
+#   kubectl create job --from=cronjob/coverage-expander covexp-resume -n fd-master \
+#     -- python -m fd_open_data_mcp.coverage.expander --resume
+# Manual one-off tick (still gated by suspend for launches only via this
+# cronjob; a manual job DOES run a tick):
+#   kubectl create job --from=cronjob/coverage-expander covexp-manual -n fd-master
+#
+# Apply AFTER the master stack + crawl-reconciler are up:
+#   kubectl apply -f k8s/coverage-expander-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: coverage-expander
+  namespace: fd-master
+  labels:
+    app: coverage-expander
+spec:
+  schedule: "23 * * * *"          # hourly, off the reconciler's :07/:22/:37/:52 marks
+  suspend: true                   # deployed SUSPENDED — operator unsuspends to start expansion
+  concurrencyPolicy: Forbid       # one tick at a time
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: crawl-reconciler   # read-only needs none; launcher uses kubeconfigs like the reconciler
+          restartPolicy: OnFailure
+          imagePullSecrets:
+          - name: fd-harbor-pull
+          containers:
+          - name: expander
+            image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+            imagePullPolicy: Always
+            command: ["python", "-m", "fd_open_data_mcp.coverage.expander"]
+            env:
+            - name: FD_OPEN_DATA_MCP_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: DATABASE_URL}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: REDIS_URL}
+            - name: RECONCILER_LAUNCHER
+              value: "k8s-multi"
+            - name: SCRAW_K8S_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: DATABASE_URL}
+            - name: SCRAW_K8S_REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: REDIS_URL}
+            - name: KUBECONFIG_DIR
+              value: "/kubeconfigs"
+            - name: POLICY_MAX_FETCHES
+              value: "50000"
+            - name: COVERAGE_MAX_WAVE_POLICIES   # concurrent open wave policies
+              value: "2"
+            - name: COVERAGE_PAUSE_FRACTION      # systemic zero-yield/failed share -> pause
+              value: "0.3"
+            - name: SCRAW_NOTIFIER
+              value: "wechat"
+            - name: SCRAW_WATCHER_SCT_TOKEN
+              valueFrom:
+                secretKeyRef: {name: fd-mcp-env, key: SCRAW_WATCHER_SCT_TOKEN}
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            volumeMounts:
+            - name: kubeconfigs
+              mountPath: /kubeconfigs
+              readOnly: true
+            resources:
+              requests: {memory: "128Mi", cpu: "100m"}
+              limits: {memory: "512Mi", cpu: "500m"}
+          volumes:
+          - name: kubeconfigs
+            secret:
+              secretName: worker-kubeconfigs   # keys: <cluster>.token, <cluster>.ca
