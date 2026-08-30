@@ -29,7 +29,7 @@ metadata:
   labels:
     app: coverage-expander
 spec:
-  schedule: "23 * * * *"          # hourly, off the reconciler's :07/:22/:37/:52 marks
+  schedule: "3,13,23,33,43,53 * * * *"  # every 10 min (monitor + reschedule), off the reconciler marks
   suspend: true                   # deployed SUSPENDED — operator unsuspends to start expansion
   concurrencyPolicy: Forbid       # one tick at a time
   successfulJobsHistoryLimit: 3
@@ -67,7 +67,11 @@ spec:
             - name: POLICY_MAX_FETCHES
               value: "50000"
             - name: COVERAGE_MAX_WAVE_POLICIES   # concurrent open wave policies
-              value: "2"
+              value: "8"
+            - name: COVERAGE_MAX_ACTIVE_WAVES     # concurrent waves (one per gap group)
+              value: "4"
+            - name: COVERAGE_TARGET_CELLS         # chunk size -> pods per wave
+              value: "8000"
             - name: COVERAGE_PAUSE_FRACTION      # systemic zero-yield/failed share -> pause
               value: "0.3"
             # Backfill depth per frequency (days) for never-crawled waves. The
