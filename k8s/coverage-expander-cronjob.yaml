@@ -80,7 +80,7 @@ spec:
               value: "wechat"
             - name: SCRAW_WATCHER_SCT_TOKEN
               valueFrom:
-                secretKeyRef: {name: fd-mcp-env, key: SCRAW_WATCHER_SCT_TOKEN}
+                secretKeyRef: {name: crawl-watcher-secret, key: SCRAW_WATCHER_SCT_TOKEN}
             - name: PYTHONUNBUFFERED
               value: "1"
             volumeMounts:
