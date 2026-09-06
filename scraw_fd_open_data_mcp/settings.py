@@ -17,9 +17,11 @@ DOWNLOAD_HANDLERS = {
     "fetch": "scraw_fd_open_data_mcp.fetch_handler.FetchHandler",
 }
 
-# Scrapy-redis scheduler for dynamic task distribution
+# Scrapy-redis scheduler for dynamic task distribution. JobSpiderQueue
+# suffixes the queue key with SCRAW_JOB_REF so concurrent runs never drain
+# each other's (or a dead run's leftover) requests (fix-shared-redis-queue).
 SCHEDULER = "scrapy_redis.scheduler.Scheduler"
-SCHEDULER_QUEUE_CLASS = "scrapy_redis.queue.SpiderQueue"  # LIFO queue
+SCHEDULER_QUEUE_CLASS = "scraw_fd_open_data_mcp.redis_queues.JobSpiderQueue"
 SCHEDULER_PERSIST = True  # Keep tasks when stopped
 DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
 # Canonical redis = fd-redis on guangzhou-xinru :30380, password-protected (real

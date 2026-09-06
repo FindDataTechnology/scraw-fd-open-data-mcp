@@ -63,6 +63,24 @@ class ConceptCrawlSpider(scrapy.Spider):
         finally:
             session.close()
 
+    def closed(self, reason):
+        """Drop this run's scheduler queue on a normal close.
+
+        With per-job queue keys (fix-shared-redis-queue) a killed Job's
+        leftovers would otherwise sit in redis forever; runs are never
+        resumed per-request (the expander relaunches the chunk fresh), so
+        the key has no second life. Best-effort: never break the close.
+        """
+        job = os.environ.get("SCRAW_JOB_REF")
+        if not job:
+            return
+        try:
+            import redis as _redis
+            r = _redis.from_url(self.settings.get("REDIS_URL"))
+            r.delete(f"{self.name}:requests:{job}")
+        except Exception:  # noqa: BLE001 - cleanup is best-effort
+            self.logger.warning("queue cleanup failed (non-fatal)", exc_info=True)
+
     def _clear_stale_dupefilter(self) -> None:
         """Clear this spider's dupefilter set on startup.
 
