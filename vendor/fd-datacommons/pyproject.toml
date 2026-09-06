@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fd-datacommons"
+dynamic = ["version"]
+description = "Google Data Commons datasource for fd-open-data-mcp"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "FindDataTechnology" }]
+dependencies = [
+    "requests>=2.31",
+    "fd-open-data-protocol",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.dynamic]
+version = { attr = "fd_datacommons.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["fd_datacommons*"]
+
+[project.entry-points."fd_open_data_mcp.datasources"]
+fd-datacommons = "fd_datacommons.catalog:CATALOG"
+
+[project.urls]
+Homepage = "https://github.com/FindDataTechnology/fd-datacommons"
+Repository = "https://github.com/FindDataTechnology/fd-datacommons"
+Issues = "https://github.com/FindDataTechnology/fd-datacommons/issues"

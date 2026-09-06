@@ -29,6 +29,9 @@ WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libssl-dev libffi-dev git && rm -rf /var/lib/apt/lists/*
 COPY . /build/scraw-fd-open-data-mcp
+# fd-datacommons is not published (PyPI/GitHub) — vendored for the datacommons
+# datasource entry point; update from the fd-datacommons workspace checkout.
+COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 
 ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.9"
 ARG FD_ODP_INSTALL=""
@@ -45,6 +48,7 @@ RUN python -m venv /opt/venv \
       "akshare==1.18.94" \
       "pandas==3.0.5" \
  && /opt/venv/bin/pip install --no-cache-dir "$FD_CNREPORT_INSTALL" \
+ && /opt/venv/bin/pip install --no-cache-dir /build/vendor/fd-datacommons \
  && /opt/venv/bin/pip install --no-cache-dir /build/scraw-fd-open-data-mcp \
  # fd-cn-report's rules_db auto-seeds from indicator_rules.json; the flat-py-module
  # wheel doesn't ship the JSON next to the module, so download it to a known path
