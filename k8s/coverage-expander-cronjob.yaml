@@ -69,7 +69,7 @@ spec:
             - name: COVERAGE_MAX_WAVE_POLICIES   # concurrent open wave policies
               value: "8"
             - name: COVERAGE_MAX_ACTIVE_WAVES     # concurrent waves (one per gap group)
-              value: "4"
+              value: "6"
             - name: COVERAGE_TARGET_CELLS         # chunk size -> pods per wave
               value: "8000"
             - name: COVERAGE_PAUSE_FRACTION      # systemic zero-yield/failed share -> pause
