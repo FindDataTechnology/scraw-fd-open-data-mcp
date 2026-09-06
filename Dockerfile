@@ -33,7 +33,7 @@ COPY . /build/scraw-fd-open-data-mcp
 # datasource entry point; update from the fd-datacommons workspace checkout.
 COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.10"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.11"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
