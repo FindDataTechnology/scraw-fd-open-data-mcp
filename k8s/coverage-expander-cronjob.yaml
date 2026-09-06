@@ -67,7 +67,7 @@ spec:
             - name: POLICY_MAX_FETCHES
               value: "50000"
             - name: COVERAGE_MAX_WAVE_POLICIES   # concurrent open wave policies
-              value: "8"
+              value: "16"
             - name: COVERAGE_MAX_ACTIVE_WAVES     # concurrent waves (one per gap group)
               value: "6"
             - name: COVERAGE_TARGET_CELLS         # chunk size -> pods per wave
