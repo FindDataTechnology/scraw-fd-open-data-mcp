@@ -33,7 +33,7 @@ COPY . /build/scraw-fd-open-data-mcp
 # datasource entry point; update from the fd-datacommons workspace checkout.
 COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.13"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.14"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
@@ -45,8 +45,8 @@ RUN python -m venv /opt/venv \
     fi \
  && /opt/venv/bin/pip install --no-cache-dir "$FD_ODM_INSTALL" \
  && /opt/venv/bin/pip install --no-cache-dir \
-      "akshare==1.18.94" \
-      "pandas==3.0.5" \
+      "akshare>=1.18.94" \
+      "pandas>=3.0.5" \
  && /opt/venv/bin/pip install --no-cache-dir "$FD_CNREPORT_INSTALL" \
  && /opt/venv/bin/pip install --no-cache-dir /build/vendor/fd-datacommons \
  && /opt/venv/bin/pip install --no-cache-dir /build/scraw-fd-open-data-mcp \
