@@ -28,7 +28,7 @@ on:
 env:
   # Harbor external address (HTTP, insecure). GitHub Actions can't resolve the
   # in-cluster harbor.local alias, so use the public IP:port.
-  REGISTRY: 23.144.68.246:30880
+  REGISTRY: 103.236.89.212:30874
   # lawcraw_business project = what the robot account owns + what pods pull.
   IMAGE_NAME: lawcraw_business/scraw-fd-open-data-mcp
 
