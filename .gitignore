@@ -35,7 +35,9 @@ ENV/
 # Environment variables
 .env
 .env.local
+.env.*
 *.env
+!.env.example
 
 # Logs
 *.log
@@ -66,4 +68,8 @@ scrapyd.pid
 .uv/
 uv.lock
 output/
+
+# Scrapy feed exports / ad-hoc dumps
+*.jl
+item.json
 plans/

@@ -19,7 +19,7 @@ import os
 import urllib.parse
 
 import scrapy
-from sqlalchemy import create_engine, text
+from sqlalchemy import bindparam, create_engine, text
 
 
 class ConceptCrawlSpider(scrapy.Spider):
@@ -135,6 +135,18 @@ class ConceptCrawlSpider(scrapy.Spider):
             # callback expands the frame to per-entity items), instead of one
             # request per (entity, date). ~1/1000th the requests for the same data.
             snap_rs = next((rs for rs in pc["ranked_sources"] if rs.get("bulk_snapshot")), None)
+            # The handler reads the failover chain from the request meta
+            # (fetch_handler.download_request: `chain = m.get("ranked_sources") or [single]`).
+            # Without it the chain collapses to whichever source this request was
+            # built for, so an endpoint that is unreachable from this egress
+            # (push2his.eastmoney.com is blocked from the Mac) fails the cell
+            # instead of failing over to the ranked alternative. Key names are the
+            # handler's: the plan says `function_command`, the handler wants `command`.
+            chain = [
+                {"source": rs["source"], "command": rs["function_command"],
+                 "column_name": rs["column_name"], "function_id": rs.get("function_id")}
+                for rs in pc["ranked_sources"]
+            ]
             if snap_rs is not None:
                 for date in dates:
                     meta = {
@@ -146,6 +158,7 @@ class ConceptCrawlSpider(scrapy.Spider):
                         "entity_id": None, "unit": pc.get("unit") or "",
                         "granularity": gran,
                         "snapshot": True,
+                        "ranked_sources": chain,
                     }
                     url = _fetch_url(snap_rs["source"], snap_rs["function_command"], meta)
                     yield scrapy.Request(url, callback=self.parse, meta=meta, dont_filter=False)
@@ -162,6 +175,7 @@ class ConceptCrawlSpider(scrapy.Spider):
                             "concept_id": pc["concept_id"], "entity_type": pc["entity_type"],
                             "entity_id": entity_id, "unit": pc.get("unit") or "",
                             "granularity": gran,
+                            "ranked_sources": chain,
                         }
                         if mode == "series":
                             # the handler/pipeline clamp to the plan's range
@@ -294,17 +308,26 @@ def _entities(db_url: str, source: str, scope: dict):
     """Return (entity_id, identifier) pairs for entities with an identifier for `source`.
 
     If the scope carries explicit ``entity_ids``, filter to those (a lazy plan's explicit
-    scope); otherwise expand to all entities of the type (a filter/all scope)."""
+    scope); otherwise expand to all entities of the type (a filter/all scope).
+
+    Portable across the Postgres fleet target and the sqlite supervised trial (design
+    D3): connect_timeout is a psycopg2-only kwarg, and the id filter uses an expanding
+    IN rather than Postgres' ``ANY(array)``.
+    """
     if not db_url:
         return []
-    eng = create_engine(db_url, connect_args={"connect_timeout": 15})
+    connect_args = {"connect_timeout": 15} if db_url.startswith("postgres") else {}
+    eng = create_engine(db_url, connect_args=connect_args)
     ids = scope.get("entity_ids")
     with eng.connect() as c:
         if ids:
-            rows = c.execute(text("""
+            stmt = text("""
                 SELECT entity_id, identifier FROM entity_source_identifiers
-                WHERE source=:s AND entity_type=:et AND entity_id = ANY(:ids)
-            """), {"s": source, "et": scope["entity_type"], "ids": ids}).fetchall()
+                WHERE source=:s AND entity_type=:et AND entity_id IN :ids
+            """).bindparams(bindparam("ids", expanding=True))
+            rows = c.execute(stmt, {
+                "s": source, "et": scope["entity_type"], "ids": ids,
+            }).fetchall()
         else:
             rows = c.execute(text("""
                 SELECT entity_id, identifier FROM entity_source_identifiers

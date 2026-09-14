@@ -71,6 +71,34 @@ def test_per_date_mode_still_expands_dates(tmp_path):
     assert "start" not in reqs[0].meta
 
 
+def test_ranked_sources_chain_reaches_request_meta(tmp_path):
+    """The handler reads the failover chain from request meta, not the plan
+    (fetch_handler.download_request: `m.get("ranked_sources") or [single]`), and
+    it wants `command`, not the plan's `function_command`. Without this the chain
+    collapses to whichever source the request was built for, so an endpoint
+    unreachable from the worker's egress fails the cell instead of failing over
+    to a ranked alternative.
+    """
+    plan = _plan(mode="per_date")
+    plan["wanted_concepts"][0]["ranked_sources"] = [
+        {"source": "akshare", "score": 0.9, "function_id": 1,
+         "function_command": "stock_zh_a_hist", "column_name": "开盘"},
+        {"source": "akshare", "score": 0.8, "function_id": 2,
+         "function_command": "stock_zh_a_hist_tx", "column_name": "open"},
+    ]
+    plan["date_range"] = {"start": "2024-01-01", "end": "2024-01-01", "frequency": "daily"}
+    sp = _make_spider(tmp_path, plan=plan)
+    with patch("scraw_fd_open_data_mcp.spiders.concept_crawl_spider._entities",
+               return_value=[(5369, "110011")]):
+        reqs = list(sp.start_requests())
+    assert len(reqs) == 2  # 1 entity x 1 date x 2 ranked sources
+    for r in reqs:
+        chain = r.meta["ranked_sources"]
+        assert [c["command"] for c in chain] == ["stock_zh_a_hist", "stock_zh_a_hist_tx"]
+        assert all("function_command" not in c for c in chain)
+        assert chain[0]["column_name"] == "开盘"
+
+
 # ─── spider: parse shapes ────────────────────────────────────────────────────
 class _FakeResponse:
     def __init__(self, meta, body, status=200):
