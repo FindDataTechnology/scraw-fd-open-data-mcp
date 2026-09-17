@@ -4,9 +4,11 @@
 # fd-open-data-mcp release + rebuilding this image = automatically picks up new
 # data-source adapters + the proxy-health modules. Override with a build-arg to
 # vendor a local checkout for development:
-#   docker build --build-arg FD_ODM_INSTALL=/build/fd-open-data-mcp \
+#   docker build --build-arg FD_ODM_INSTALL=/build/fd-open-data-mcp[data] \
 #     --build-arg FD_ODP_INSTALL=/build/fd-open-data-protocol -t ... .
-# (when vendoring, the build context must include those dirs.)
+# (when vendoring, the build context must include those dirs; keep the [data]
+# extra — without it the image silently loses yfinance/edgartools/… and any
+# datasource or probe that imports them crashes with ModuleNotFoundError.)
 #
 # scraw-fd-open-data-mcp itself is vendored (it's the crawler, not on PyPI).
 #
