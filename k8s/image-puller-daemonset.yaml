@@ -1,4 +1,4 @@
-# image-puller: keeps harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+# image-puller: keeps 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-0970560
 # present on every REGISTRY-CAPABLE node (the control-plane node here), because
 # crawl Jobs run with imagePullPolicy=IfNotPresent — preloaded-only worker
 # nodes (pool=cheap, scraw.io/preloaded=true) can't reach the registry and run
@@ -26,7 +26,7 @@ spec:
         - {key: node-role.kubernetes.io/control-plane, effect: NoSchedule, operator: Exists}
       containers:
         - name: puller
-          image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+          image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-0970560
           imagePullPolicy: Always
           command: ["sh", "-c", "sleep 3600"]
           resources:

@@ -44,7 +44,7 @@ spec:
           - name: fd-harbor-pull
           containers:
           - name: watcher-scan
-            image: harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
+            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-0970560
             imagePullPolicy: Always
             command: ["python", "-m", "fd_open_data_mcp.visibility.scan"]
             env:
