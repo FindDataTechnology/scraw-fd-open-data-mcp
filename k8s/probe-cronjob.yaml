@@ -8,6 +8,9 @@ metadata:
 spec:
   schedule: "*/1 * * * *"   # every minute; tune per source (design.md open Q)
   concurrencyPolicy: Forbid
+  # Hard cap: a hung probe fetch (e.g. yfinance's Yahoo retry dance behind a
+  # slow shared exit) must not block every later cycle under Forbid.
+  activeDeadlineSeconds: 300
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
