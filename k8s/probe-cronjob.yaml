@@ -19,8 +19,11 @@ spec:
           - name: fd-harbor-pull
           containers:
           - name: probe
-            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-0970560
-            imagePullPolicy: Always
+            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-d1c7a78
+            # IfNotPresent: this tag is currently node-imported (k3s ctr) — the
+            # Harbor push is pending fresh push credentials after the 2026-09-17
+            # Harbor refactor. Always would ImagePullBackOff until it lands.
+            imagePullPolicy: IfNotPresent
             command: ["python", "-m", "fd_open_data_mcp.probe.job"]
             env:
             - name: FD_OPEN_DATA_MCP_DATABASE_URL
