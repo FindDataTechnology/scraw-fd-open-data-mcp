@@ -157,12 +157,34 @@ class FetchHandler:
              "function_id": m.get("function_id")}
         ]
 
+        # Bounded failover chain (spec concept-fetch). The planner bounds a
+        # concept's chain, and it is bounded again here so a hand-edited or
+        # pre-change plan cannot make one cell issue unbounded upstream calls:
+        # concept price.close/stock carried 117 candidates, and each candidate
+        # costs up to (max_proxies x per-proxy retries) upstream calls.
+        try:
+            from fd_open_data_mcp.crawl.planner import chain_bound
+
+            bound = chain_bound()
+            if len(chain) > bound:
+                spider.logger.warning(
+                    "chain for concept %s has %d candidates; bounded to %d",
+                    concept_id, len(chain), bound)
+                chain = chain[:bound]
+        except Exception:  # noqa: BLE001 - the bound must never break a fetch
+            pass
+
         # Per-(cluster, function) demotion (fix-silent-zero-yield-crawls D5):
         # entries whose endpoint is known-blocked from THIS cluster's egress
         # move to the end of the chain — still probed (that's how they
         # restore), never preferred over a reachable alternative. Keyed on
         # function, never on source: one source spans reachable and blocked
         # hosts simultaneously.
+        #
+        # Applies in EVERY mode. It used to be skipped for snapshot mode,
+        # which meant a snapshot cell kept preferring an endpoint already known
+        # blocked from this egress — the demotion existed and simply was not
+        # consulted on that path.
         cluster_id = None
         raw_cluster = os.environ.get("SCRAW_CLUSTER_ID")
         if raw_cluster:
@@ -170,13 +192,44 @@ class FetchHandler:
                 cluster_id = int(raw_cluster)
             except ValueError:
                 cluster_id = None
-        if cluster_id is not None and not snapshot_mode:
+        # Permanent-path suppression + per-(cluster, function) demotion.
+        #
+        # Suppression is cluster-independent — a missing callable is missing from
+        # every egress — so it applies whenever the DB is reachable, not only
+        # when a cluster is known. Demotion IS route health, so it needs the
+        # cluster. Both are best-effort: a lookup failure must never break a
+        # fetch, and the chain falls back to its configured rank.
+        #
+        # Suppression runs first and EXCLUDES the path outright; demotion then
+        # reorders what remains. Applying demotion to a suppressed path would be
+        # meaningless — "last" is still "attempted".
+        try:
             from fd_open_data_mcp.db import get_database
-            from fd_open_data_mcp.fetch.demote import reorder_chain
+
             s = get_database().get_session()
+        except Exception:  # noqa: BLE001 - no DB, nothing to consult
+            s = None
+        if s is not None:
             try:
-                healthy, demoted = reorder_chain(s, cluster_id, chain)
-                chain[:] = healthy + demoted
+                from fd_open_data_mcp.fetch.suppress import suppressed_paths
+
+                pairs = {(concept_id, rs.get("function_id")) for rs in chain
+                         if rs.get("function_id") is not None}
+                if pairs:
+                    suppressed = suppressed_paths(s, pairs)
+                    if suppressed:
+                        spider.logger.info(
+                            "excluding %d permanently-failing path(s) for concept %s",
+                            len(suppressed), concept_id)
+                        chain[:] = [
+                            rs for rs in chain
+                            if (concept_id, rs.get("function_id")) not in suppressed
+                        ]
+                if cluster_id is not None:
+                    from fd_open_data_mcp.fetch.demote import reorder_chain
+
+                    healthy, demoted = reorder_chain(s, cluster_id, chain)
+                    chain[:] = healthy + demoted
             except Exception:  # noqa: BLE001 - demotion must never break a fetch
                 spider.logger.warning("demotion lookup failed; using configured rank",
                                       exc_info=True)
