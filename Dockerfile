@@ -26,12 +26,27 @@
 
 FROM python:3.12-slim AS builder
 WORKDIR /build
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Optional CN build mirrors — empty by default (upstream sources, CI-friendly).
+# On CN build boxes (e.g. the chengsi fleet) pass:
+#   --build-arg APT_MIRROR=mirrors.aliyun.com --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+# PIP_INDEX_URL is picked up by pip automatically for every install below.
+ARG APT_MIRROR=""
+ARG PIP_INDEX_URL=""
+RUN if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; \
+    fi \
+ && apt-get update && apt-get install -y --no-install-recommends \
     build-essential libssl-dev libffi-dev git && rm -rf /var/lib/apt/lists/*
 COPY . /build/scraw-fd-open-data-mcp
 # fd-datacommons is not published (PyPI/GitHub) — vendored for the datacommons
 # datasource entry point; update from the fd-datacommons workspace checkout.
 COPY vendor/fd-datacommons /build/vendor/fd-datacommons
+# fd-open-data-mcp IS on PyPI but the live fleet needs commits newer than the
+# latest release (0.5.9) — vendored under vendor/fd-open-data-mcp and selected
+# via --build-arg FD_ODM_INSTALL=/build/fd-open-data-mcp (see header). Required
+# whenever that build-arg is used; remove this line only if the vendored flow
+# is retired.
+COPY vendor/fd-open-data-mcp /build/fd-open-data-mcp
 
 ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.14"
 ARG FD_ODP_INSTALL=""
