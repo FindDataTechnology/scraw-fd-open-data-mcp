@@ -92,6 +92,11 @@ spec:
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef: {name: fd-db-secret, key: REDIS_URL}  # redis://:pw@100.64.0.3:30380/0 (xinru fd-redis db0)
+            # Scheduling-time is_selectable must see forwarder-written circuit
+            # state (proxy-redis db1), else banned exits keep receiving jobs.
+            - name: PROXY_REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: PROXY_REDIS_URL_CONTROL}
             - name: RECONCILER_LAUNCHER
               value: "k8s-multi"
             # The DB + Redis URLs the worker Jobs use — same canonical xinru

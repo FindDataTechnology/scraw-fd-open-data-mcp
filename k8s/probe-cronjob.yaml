@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: fd-proxy-probe
-  namespace: scraw
+  namespace: fd-master
   labels:
     app: fd-proxy-probe
 spec:
@@ -25,18 +25,18 @@ spec:
             env:
             - name: FD_OPEN_DATA_MCP_DATABASE_URL
               valueFrom:
-                secretKeyRef: {name: fd-open-data-secrets, key: DATABASE_URL}
+                secretKeyRef: {name: fd-db-secret, key: DATABASE_URL}
+            # Circuit state lives in the forwarder's proxy-redis (db1): the
+            # probe must scan what proxy-fw /release wrote, so PROXY_REDIS_URL
+            # (which wins over REDIS_URL in proxy/circuit.py) points there.
+            - name: PROXY_REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: fd-db-secret, key: PROXY_REDIS_URL_CONTROL}
             - name: REDIS_URL
               valueFrom:
-                secretKeyRef: {name: fd-open-data-secrets, key: REDIS_URL}
+                secretKeyRef: {name: fd-db-secret, key: REDIS_URL}  # fallback; db0
             - name: PYTHONUNBUFFERED
               value: "1"
             resources:
               requests: {memory: "128Mi", cpu: "100m"}
               limits: {memory: "512Mi", cpu: "500m"}
----
-# The fd-open-data-secrets Secret (DATABASE_URL + REDIS_URL) must exist in the
-# scraw namespace. Create it with:
-#   kubectl create secret generic fd-open-data-secrets -n scraw \
-#     --from-literal=DATABASE_URL='postgresql+psycopg2://postgres:admin123@fd-open-pg.scraw:5432/postgres' \
-#     --from-literal=REDIS_URL='redis://fd-open-redis.scraw:6379/0'
