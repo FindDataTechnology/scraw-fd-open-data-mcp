@@ -50,7 +50,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # is retired.
 COPY vendor/fd-open-data-mcp /build/fd-open-data-mcp
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.14"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.17"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
