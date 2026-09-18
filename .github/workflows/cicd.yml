@@ -1,98 +1,34 @@
-# Build the scraw-fd-open-data-mcp worker image and push to Harbor.
+# DISABLED (2026-09-18): image builds are DOMESTIC-ONLY.
 #
-# The image is the ONLY artifact this workflow ships. Deployment is pull-based:
-# every crawl Job + the reconciler CronJob reference
-#   harbor.local/lawcraw_business/scraw-fd-open-data-mcp:latest
-# with imagePullPolicy: Always, so pushing :latest here IS the deploy - the next
-# reconciler tick (<=15 min) or next crawl Job picks up the new image. No
-# kubectl, no kubeconfig secret, no Argo CD needed.
+# Policy (user directive, 2026-09-10): GitHub-hosted runners must NEVER build or
+# push to the domestic Harbor (23.144.68.246:30880, and this repo's
+# 103.236.89.212:30874 endpoint) or any CN server — foreign runner IPs hammering
+# domestic endpoints risk IP bans.
 #
-# fd-open-data-mcp is installed FROM PYPI inside the Dockerfile (default
-# FD_ODM_INSTALL=fd-open-data-mcp>=0.4.5), so bumping the Dockerfile arg + a
-# push here lands new adapters / proxy-health / multi-cluster code in the image.
+# Where this image is built instead: on the cheap-fleet box. The current channel
+# is a box-side `docker build --build-arg FD_ODM_INSTALL=fd-open-data-mcp[data]`
+# (the [data] extra must not be dropped), then `docker save | gzip` to the nodes
+# and `k3s ctr -n k8s.io images import` (INFRA-NOTES.md, 镜像分发临时通道); the
+# Harbor push resumes from the box once push credentials are reissued after the
+# 2026-09-17 Harbor rebuild.
 #
-# No buildx/buildkit driver: build-push-action runs on the default docker
-# daemon driver, whose push path is proven against this HTTP-only Harbor
-# (direct `docker push` from the Harbor box succeeded). buildkit's own push
-# path 401s on the blob-existence HEAD request with HTTP registries, so we
-# avoid it. The daemon.json step below marks the registry insecure.
-name: Build & Push image to Harbor
+# The push-triggered job this replaces could not succeed on GitHub by
+# construction: Dockerfile:51 COPYs vendor/fd-open-data-mcp, a local checkout
+# that is deliberately not committed — run 35325169249 (2026-09-18) died on
+# exactly that, and since the Harbor rebuild every documented push credential
+# returns 401 anyway.
+#
+# This stub exists so the file path stays claimed and fails loudly if anyone
+# re-points it at a registry.
+name: Build & Push image to Harbor (disabled)
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
-
-env:
-  # Harbor external address (HTTP, insecure). GitHub Actions can't resolve the
-  # in-cluster harbor.local alias, so use the public IP:port.
-  REGISTRY: 103.236.89.212:30874
-  # lawcraw_business project = what the robot account owns + what pods pull.
-  IMAGE_NAME: lawcraw_business/scraw-fd-open-data-mcp
+on: workflow_dispatch
 
 jobs:
-  build-and-push:
+  refuse:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Configure Docker daemon for insecure Harbor registry
+      - name: Refuse
         run: |
-          echo "{\"insecure-registries\": [\"${{ env.REGISTRY }}\"]}" | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-          sleep 3
-
-      - name: Log in to Harbor
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          # robot$lawcraw_business = system robot with push/pull on the
-          # lawcraw_business project (verified via Harbor API: 202 on blob
-          # upload). HARBOR_USER/HARBOR_PASS is scoped to the scraw project
-          # and CANNOT push here - that was run 2's failure.
-          username: ${{ secrets.HARBOR_ROBOT_USER }}
-          password: ${{ secrets.HARBOR_ROBOT_PASSWORD }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          # THE fix: without http=true, buildkit pushes via HTTPS to an
-          # HTTP-only registry, the blob upload starts then dies with
-          # "unauthorized". Mirrors scraw-ops/docker-publish.yml exactly.
-          buildkitd-config-inline: |
-            [registry."${{ env.REGISTRY }}"]
-              http = true
-
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            latest
-
-      - name: Build and push Docker image
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          # Don't pollute :latest from a PR - build only, no push.
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            FD_ODM_INSTALL=fd-open-data-mcp>=0.4.8
-
-      - name: Image digest
-        run: echo "Pushed ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          echo "::error::Image builds are domestic-only (cheap-fleet box). Do not re-enable pushes from GitHub runners."
+          exit 1
