@@ -66,7 +66,7 @@ metadata:
     app: crawl-reconciler
 spec:
   schedule: "7,22,37,52 * * * *"   # every 15 min, off the :00/:15/:30/:45 marks
-  suspend: true                    # deployed SUSPENDED on xinru; unsuspend after worker-side proxy-fw re-apply (add-proxy-service 10.x)
+  suspend: false                   # resumed 2026-09-18 (fail-fast-permanent-fetch-errors verification; FD_CAPABILITY_CHECK=enforce live)
   concurrencyPolicy: Forbid        # one tick at a time (single-flight is per-policy)
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -114,8 +114,15 @@ spec:
               value: "/kubeconfigs"
             - name: POLICY_MAX_FETCHES
               value: "50000"
+            # fail-fast-permanent-fetch-errors: plan-time exclusion of endpoints
+            # unresolvable on the dispatch host (report = log-only default).
+            - name: FD_CAPABILITY_CHECK
+              value: "enforce"
             - name: PYTHONUNBUFFERED
               value: "1"
+            # NOTE: the live object also carries DC_API_KEY and
+            # FD_BINDING_ELIGIBILITY_GATE=enforce (set out-of-band); re-applying
+            # this manifest strips them — patch instead of apply, or add them here.
             volumeMounts:
             - name: kubeconfigs
               mountPath: /kubeconfigs
