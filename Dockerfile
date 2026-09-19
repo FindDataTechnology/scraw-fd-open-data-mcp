@@ -46,7 +46,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # fd-open-data-mcp is NOT vendored anymore: pip resolves >=0.5.17 from PyPI
 # (v0.5.17 released with the eastmoney-ok nodeSelector fix).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.17"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.19"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
