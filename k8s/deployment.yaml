@@ -22,7 +22,7 @@ spec:
       serviceAccountName: scraw-fd-open-data-mcp
       containers:
       - name: scraw-fd-open-data-mcp
-        image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-c6ed730
+        image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-33e0346
         imagePullPolicy: Always
         command: ["scraw-fd-open-data-mcp"]
         args: ["serve"]
