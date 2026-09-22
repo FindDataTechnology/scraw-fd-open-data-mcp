@@ -37,10 +37,11 @@ def write_observations(rows: Iterable[dict]) -> tuple[int, int]:
     """Idempotent upsert of observation rows into semantic_observations.
 
     Each row: {concept_id, entity_type, entity_id, date, granularity, value, unit, source_used}.
-    ON CONFLICT DO NOTHING keeps the existing value (first-writer-wins). The
-    (…, date, granularity) key makes monthly and daily observations of the same
-    period DISTINCT rows, so first-writer-wins no longer silently drops a cadence
-    (fix-observation-time-granularity).
+    ON CONFLICT DO NOTHING keeps the existing value per (point, source). The
+    (…, date, granularity, source_used) key makes monthly and daily observations of the
+    same period DISTINCT rows (fix-observation-time-granularity) and lets two sources'
+    values for the same point coexist (add-multi-source-observations) — a second
+    source's crawl lands its own rows instead of being swallowed by the first.
 
     Returns ``(attempted, inserted)``: rows handed to the upsert, and rows that
     actually landed (excluding ON CONFLICT no-ops) — the two counters yield
@@ -75,7 +76,7 @@ def write_observations(rows: Iterable[dict]) -> tuple[int, int]:
         INSERT INTO semantic_observations
             (concept_id, entity_type, entity_id, date, granularity, value, unit, source_used, fetched_at)
         VALUES %s
-        ON CONFLICT (concept_id, entity_type, entity_id, date, granularity) DO NOTHING
+        ON CONFLICT (concept_id, entity_type, entity_id, date, granularity, source_used) DO NOTHING
         RETURNING 1
     """, data, fetch=True))
     conn.commit()
@@ -87,9 +88,9 @@ def write_observations(rows: Iterable[dict]) -> tuple[int, int]:
 def _write_observations_sqlite(eng: Engine, data: list[tuple]) -> tuple[int, int]:
     """SQLite upsert path for the local supervised trial (design D3).
 
-    Same semantics as the Postgres path — ON CONFLICT DO NOTHING on the 5-column
-    key, first-writer-wins — expressed with the sqlite dialect's conflict clause.
-    Landed rows are counted as the table size delta, which sidesteps the
+    Same semantics as the Postgres path — ON CONFLICT DO NOTHING on the
+    6-column (point, source) key — expressed with the sqlite dialect's conflict
+    clause. Landed rows are counted as the table size delta, which sidesteps the
     executemany/RETURNING interaction.
     ponytail: the COUNT(*) scans are O(n) per flush; fine for a trial-sized
     store, switch to RETURNING if a sqlite target ever grows.
@@ -100,7 +101,8 @@ def _write_observations_sqlite(eng: Engine, data: list[tuple]) -> tuple[int, int
 
     tbl = SemanticObservation.__table__
     stmt = sqlite_insert(tbl).on_conflict_do_nothing(
-        index_elements=["concept_id", "entity_type", "entity_id", "date", "granularity"])
+        index_elements=["concept_id", "entity_type", "entity_id", "date", "granularity",
+                        "source_used"])
     with eng.begin() as conn:
         before = conn.execute(select(func.count()).select_from(tbl)).scalar_one()
         conn.execute(stmt, [dict(zip(_COLS, row)) for row in data])
