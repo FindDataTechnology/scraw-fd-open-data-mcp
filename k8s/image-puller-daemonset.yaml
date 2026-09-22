@@ -1,4 +1,4 @@
-# image-puller: keeps 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-0970560
+# image-puller: keeps 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-c6ed730
 # present on every REGISTRY-CAPABLE node (the control-plane node here), because
 # crawl Jobs run with imagePullPolicy=IfNotPresent — preloaded-only worker
 # nodes (pool=cheap, scraw.io/preloaded=true) can't reach the registry and run
