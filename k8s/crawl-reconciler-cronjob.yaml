@@ -80,10 +80,11 @@ spec:
           - name: fd-harbor-pull
           containers:
           - name: reconciler
-            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-d6cf0b3
-            # sha-d6cf0b3 carries fd-open-data-mcp 0.5.25 (concept-platform-
-            # federation: crawl_runs mirror on run close). Verified pullable
-            # from Harbor on xinru 2026-09-27; IfNotPresent keeps warm restarts cheap.
+            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-1d052bc
+            # sha-1d052bc carries fd-open-data-mcp 0.5.26 (concept-platform-
+            # federation mirror: sibling-transaction writes, rows_written per
+            # prod NOT NULL DEFAULT 0). Verified pullable from Harbor on xinru
+            # 2026-09-27; IfNotPresent keeps warm restarts cheap.
             imagePullPolicy: IfNotPresent
             command: ["python", "-m", "fd_open_data_mcp.refresh.reconciler"]
             env:
