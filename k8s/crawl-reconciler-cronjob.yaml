@@ -121,9 +121,21 @@ spec:
               value: "enforce"
             - name: PYTHONUNBUFFERED
               value: "1"
-            # NOTE: the live object also carries DC_API_KEY and
-            # FD_BINDING_ELIGIBILITY_GATE=enforce (set out-of-band); re-applying
-            # this manifest strips them — patch instead of apply, or add them here.
+            # 2026-09-27: the following four were historically set out-of-band,
+            # so re-applying this manifest silently stripped them (happened once
+            # during the sha-d6cf0b3 roll; restored by patch from the last
+            # pre-roll job spec). They now live IN the manifest — keep it the
+            # faithful record; never let them drift out again.
+            - name: DC_API_KEY
+              value: "ydW2xMxlBw2jjlpPvvubaAai66aL4yGkwyLXbhheDia8HipG"
+            - name: FD_BINDING_ELIGIBILITY_GATE
+              value: "enforce"
+            - name: FD_SCRIPTS_DIR
+              value: "/opt/fd-scripts/"
+            # Worker pods' image — deliberately pinned separately from the
+            # reconciler image; roll only with a verified worker build.
+            - name: SCRAW_K8S_IMAGE
+              value: "100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-33e0346"
             volumeMounts:
             - name: kubeconfigs
               mountPath: /kubeconfigs
