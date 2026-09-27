@@ -80,9 +80,10 @@ spec:
           - name: fd-harbor-pull
           containers:
           - name: reconciler
-            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-d1c7a78
-            # IfNotPresent: sha-d1c7a78 is node-imported on xinru (Harbor push
-            # pending fresh push credentials after the 2026-09-17 refactor).
+            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-d6cf0b3
+            # sha-d6cf0b3 carries fd-open-data-mcp 0.5.25 (concept-platform-
+            # federation: crawl_runs mirror on run close). Verified pullable
+            # from Harbor on xinru 2026-09-27; IfNotPresent keeps warm restarts cheap.
             imagePullPolicy: IfNotPresent
             command: ["python", "-m", "fd_open_data_mcp.refresh.reconciler"]
             env:
