@@ -80,8 +80,8 @@ spec:
           - name: fd-harbor-pull
           containers:
           - name: reconciler
-            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-1d052bc
-            # sha-1d052bc carries fd-open-data-mcp 0.5.26 (concept-platform-
+            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-fae6d2d
+            # sha-fae6d2d carries fd-open-data-mcp 0.5.26 (concept-platform-
             # federation mirror: sibling-transaction writes, rows_written per
             # prod NOT NULL DEFAULT 0). Verified pullable from Harbor on xinru
             # 2026-09-27; IfNotPresent keeps warm restarts cheap.
