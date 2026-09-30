@@ -14,9 +14,13 @@
 #
 # Pins: scrapy>=2.12,<2.13 (2.13+ broke start_requests + sync download_handler),
 # Twisted<25 (removed _setAcceptableProtocols that scrapy 2.12 needs).
-# fd-open-data-mcp's [data] extra pulls ALL data-source deps (akshare, wbgapi,
+# fd-open-data-mcp's [data] extra pulls the data-source deps (akshare, wbgapi,
 # yfinance, edgartools, ...) so adding a data source to pyproject.toml [data]
 # is all that's needed - no Dockerfile edit, no per-package maintenance.
+# Browser rendering is NOT part of [data] since fd-open-data-mcp 0.5.34
+# (openspec image-slimming): scrapling/playwright live in [browser] and the
+# fleet image stays browser-free; a browser-capable variant is
+# fd-open-data-mcp[data,browser] if one is ever needed.
 #
 # fix-silent-zero-yield-crawls task 7.1: the data deps themselves are pinned
 # BELOW (after the fd-open-data-mcp install) so a rebuild can no longer
@@ -43,10 +47,12 @@ COPY . /build/scraw-fd-open-data-mcp
 # fd-datacommons is not published (PyPI/GitHub) — vendored for the datacommons
 # datasource entry point; update from the fd-datacommons workspace checkout.
 COPY vendor/fd-datacommons /build/vendor/fd-datacommons
-# fd-open-data-mcp is NOT vendored anymore: pip resolves >=0.5.17 from PyPI
-# (v0.5.17 released with the eastmoney-ok nodeSelector fix).
+# fd-open-data-mcp is NOT vendored anymore: pip resolves from PyPI. Floor
+# history: >=0.5.17 (eastmoney-ok nodeSelector fix) -> >=0.5.24 -> >=0.5.34
+# (first release whose [data] extra excludes the browser stack — the fleet
+# image must never silently re-fatten with scrapling/playwright).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.24"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.34"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
