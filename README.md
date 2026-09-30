@@ -70,3 +70,8 @@ scraw-fd-open-data-mcp/
 ├── tests/test_smoke.py
 └── docs/
 ```
+
+## Image publish
+
+Images are built by GitHub Actions (`.github/workflows/image.yml`) and pushed to
+Tencent TCR personal edition: `ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-<short>` (+ rolling `main`). Release ritual: dev pushes go to gitee; publishing = `git push github main`. The Jenkins→Harbor path is the fallback channel only.
