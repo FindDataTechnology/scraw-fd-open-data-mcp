@@ -55,12 +55,17 @@ RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir "scrapy>=2.12,<2.13" "Twisted<25" \
  && if [ -n "$FD_ODP_INSTALL" ]; then \
         /opt/venv/bin/pip install --no-cache-dir "$FD_ODP_INSTALL"; \
-    fi \
- && /opt/venv/bin/pip install --no-cache-dir "$FD_ODM_INSTALL" \
+    fi
+
+# The dependency install is split across RUN steps deliberately: one giant
+# ~350MB layer wedges transpacific registry pushes (buildx blob upload stalls
+# with no timeout against ccr.ccs.tencentyun.com); ~150MB layers complete.
+RUN /opt/venv/bin/pip install --no-cache-dir "$FD_ODM_INSTALL" \
  && /opt/venv/bin/pip install --no-cache-dir \
       "akshare>=1.18.94" \
-      "pandas>=3.0.5" \
- && /opt/venv/bin/pip install --no-cache-dir "$FD_CNREPORT_INSTALL" \
+      "pandas>=3.0.5"
+
+RUN /opt/venv/bin/pip install --no-cache-dir "$FD_CNREPORT_INSTALL" \
  && /opt/venv/bin/pip install --no-cache-dir /build/vendor/fd-datacommons \
  && /opt/venv/bin/pip install --no-cache-dir /build/scraw-fd-open-data-mcp \
  # fd-cn-report's rules_db auto-seeds from indicator_rules.json; the flat-py-module
