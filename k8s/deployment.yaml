@@ -22,7 +22,11 @@ spec:
       serviceAccountName: scraw-fd-open-data-mcp
       containers:
       - name: scraw-fd-open-data-mcp
-        image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-fae6d2d
+        # TCR crawler-lineage build (image-slimming audit 2026-10-01: the old
+        # Harbor sha-fae6d2d here was a SERVER-lineage image — 85 packages, no
+        # scrapy/akshare — mismatched with this `scraw-fd-open-data-mcp serve`
+        # entrypoint; the manifest is not applied anywhere, pin kept honest).
+        image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-2302fbe
         imagePullPolicy: Always
         command: ["scraw-fd-open-data-mcp"]
         args: ["serve"]

@@ -135,8 +135,13 @@ spec:
               value: "/opt/fd-scripts/"
             # Worker pods' image — deliberately pinned separately from the
             # reconciler image; roll only with a verified worker build.
+            # 2026-10-01 (image-slimming leftover): sha-2302fbe = first
+            # browser-free [data] fleet build (fd-open-data-mcp 0.5.34 floor),
+            # package-verified via registry dive; the clusters table rows were
+            # repointed to the same tag (tencent had mis-pinned the
+            # server-lineage Harbor sha-fae6d2d).
             - name: SCRAW_K8S_IMAGE
-              value: "100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-33e0346"
+              value: "ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-2302fbe"
             volumeMounts:
             - name: kubeconfigs
               mountPath: /kubeconfigs
