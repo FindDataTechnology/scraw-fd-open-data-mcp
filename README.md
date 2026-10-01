@@ -1,5 +1,7 @@
 # scraw-fd-open-data-mcp
 
+> **Wire (柏讯) product line** · the open-data supply line of [FindData](https://www.finddatatech.cloud/products/wire) — the unified concept-driven crawler
+
 The **unified concept-driven crawler** for `fd-open-data-mcp`. Replaces the per-source
 `scraw-*` projects. Two modes:
 
