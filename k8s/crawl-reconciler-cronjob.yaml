@@ -80,7 +80,7 @@ spec:
           - name: fd-harbor-pull
           containers:
           - name: reconciler
-            image: 100.64.0.8:30880/finddata/scraw-fd-open-data-mcp:sha-fae6d2d
+            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-291af8c
             # sha-fae6d2d carries fd-open-data-mcp 0.5.26 (concept-platform-
             # federation mirror: sibling-transaction writes, rows_written per
             # prod NOT NULL DEFAULT 0). Verified pullable from Harbor on xinru
