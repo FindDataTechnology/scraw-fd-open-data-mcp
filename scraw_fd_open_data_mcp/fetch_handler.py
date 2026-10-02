@@ -97,9 +97,14 @@ def _build_series_params(adapter, command, identifier, start, end, column):
 
 
 def _extract_series(adapter, result, column, start, end):
-    """``{'YYYY-MM-DD': value}`` for the whole frame, or None if unsupported."""
+    """``{'YYYY-MM-DD': value}`` for the whole frame, or None if unsupported.
+
+    A None start (series+since_last plan whose watermark could not be derived)
+    means "no lower bound" — clamp it instead of letting the adapter's
+    ``start <= d`` comparison raise TypeError on every row.
+    """
     if adapter and hasattr(adapter, "extract_series"):
-        return adapter.extract_series(result, column, start, end)
+        return adapter.extract_series(result, column, start or "1900-01-01", end)
     return None
 
 
