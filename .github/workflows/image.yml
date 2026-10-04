@@ -62,7 +62,7 @@ jobs:
       - name: Smoke gate (import + entrypoint on the built image)
         run: |
           IMG="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
-          docker run --rm "$IMG" python -c "import scrapy; print('scrapy', scrapy.__version__)"
+          docker run --rm --entrypoint python "$IMG" -c "import scrapy; print('scrapy', scrapy.__version__)"
           docker run --rm --entrypoint scraw-fd-open-data-mcp "$IMG" --help > /dev/null
 
       - name: Push (only after smoke passes)
