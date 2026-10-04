@@ -1,6 +1,10 @@
 # Container image publish — GitHub Actions → Tencent TCR personal edition.
 # Standard channel per openspec tcr-image-pipeline (2026-09-30 user directive).
 # Jenkins→Harbor remains the fallback channel for this repo.
+# Smoke gate (openspec scraw-runner-image-regression): the built image must
+# import scrapy and answer --help BEFORE any tag is pushed — a broken image
+# (e.g. an upstream dep release slipping past the pins) must never reach the
+# fleet. This is exactly how the 2026-10-01 w3lib 2.5 regression shipped.
 name: image
 
 on:
@@ -43,7 +47,26 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=main
 
-      - uses: docker/build-push-action@v6
+      - name: Build (local load, not pushed yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ env.DOCKERFILE }}
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke gate (import + entrypoint on the built image)
+        run: |
+          IMG="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
+          docker run --rm "$IMG" python -c "import scrapy; print('scrapy', scrapy.__version__)"
+          docker run --rm --entrypoint scraw-fd-open-data-mcp "$IMG" --help > /dev/null
+
+      - name: Push (only after smoke passes)
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ env.DOCKERFILE }}
@@ -52,4 +75,3 @@ jobs:
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max

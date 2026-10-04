@@ -13,7 +13,9 @@
 # scraw-fd-open-data-mcp itself is vendored (it's the crawler, not on PyPI).
 #
 # Pins: scrapy>=2.12,<2.13 (2.13+ broke start_requests + sync download_handler),
-# Twisted<25 (removed _setAcceptableProtocols that scrapy 2.12 needs).
+# Twisted<25 (removed _setAcceptableProtocols that scrapy 2.12 needs),
+# w3lib>=2.1,<2.5 (2.5 removed _safe_chars that scrapy 2.12 imports — the
+# 2026-10-01 fleet regression; see openspec scraw-runner-image-regression).
 # fd-open-data-mcp's [data] extra pulls the data-source deps (akshare, wbgapi,
 # yfinance, edgartools, ...) so adding a data source to pyproject.toml [data]
 # is all that's needed - no Dockerfile edit, no per-package maintenance.
@@ -58,7 +60,7 @@ ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
- && /opt/venv/bin/pip install --no-cache-dir "scrapy>=2.12,<2.13" "Twisted<25" \
+ && /opt/venv/bin/pip install --no-cache-dir "scrapy>=2.12,<2.13" "Twisted<25" "w3lib>=2.1,<2.5" \
  && if [ -n "$FD_ODP_INSTALL" ]; then \
         /opt/venv/bin/pip install --no-cache-dir "$FD_ODP_INSTALL"; \
     fi
@@ -70,6 +72,17 @@ RUN /opt/venv/bin/pip install --no-cache-dir "$FD_ODM_INSTALL" \
  && /opt/venv/bin/pip install --no-cache-dir \
       "akshare>=1.18.94" \
       "pandas>=3.0.5"
+
+# Direct-script policies (crawl_policies.executor='direct') get their script
+# source read from /app/scripts at launch (reconciler _read_script), but the
+# fd-open-data-mcp wheel doesn't ship repo-level scripts/. Pull them from the
+# sdist instead — same recipe as the fd-cn-report rules_db below. Requires the
+# sdist to carry scripts/ (fd-open-data-mcp MANIFEST.in recursive-include).
+RUN /opt/venv/bin/pip download --no-deps --no-binary :all: fd-open-data-mcp -d /tmp/fodm-src \
+ && tar -xzf /tmp/fodm-src/fd_open_data_mcp-*.tar.gz -C /tmp/fodm-src \
+ && mkdir -p /build/fodm-scripts \
+ && cp /tmp/fodm-src/fd_open_data_mcp-*/scripts/*.py /build/fodm-scripts/ \
+ && rm -rf /tmp/fodm-src
 
 RUN /opt/venv/bin/pip install --no-cache-dir "$FD_CNREPORT_INSTALL" \
  && /opt/venv/bin/pip install --no-cache-dir /build/vendor/fd-datacommons \
@@ -88,6 +101,10 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/rules /opt/rules
 COPY . /app
+# bulk-ingest scripts land after the repo COPY so the scraw repo's own
+# scripts/ (financial_*, proxy_*) and these share /app/scripts without
+# shadowing each other; names are disjoint.
+COPY --from=builder /build/fodm-scripts /app/scripts
 RUN mkdir -p /app/output /plan /tmp/output /data
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
