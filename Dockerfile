@@ -77,7 +77,8 @@ RUN /opt/venv/bin/pip install --no-cache-dir "$FD_ODM_INSTALL" \
 # source read from /app/scripts at launch (reconciler _read_script), but the
 # fd-open-data-mcp wheel doesn't ship repo-level scripts/. Pull them from the
 # sdist instead — same recipe as the fd-cn-report rules_db below. Requires the
-# sdist to carry scripts/ (fd-open-data-mcp MANIFEST.in recursive-include).
+# sdist to carry scripts/ (fd-open-data-mcp >= 0.5.36) and the source-aware
+# upsert fix (>= 0.5.37).
 RUN /opt/venv/bin/pip download --no-deps --no-binary :all: fd-open-data-mcp -d /tmp/fodm-src \
  && tar -xzf /tmp/fodm-src/fd_open_data_mcp-*.tar.gz -C /tmp/fodm-src \
  && mkdir -p /build/fodm-scripts \
