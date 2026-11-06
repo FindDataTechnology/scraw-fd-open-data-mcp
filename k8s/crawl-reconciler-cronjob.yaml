@@ -127,8 +127,13 @@ spec:
             # during the sha-d6cf0b3 roll; restored by patch from the last
             # pre-roll job spec). They now live IN the manifest — keep it the
             # faithful record; never let them drift out again.
+            # 2026-11-06: DC_API_KEY moved to Secret `dc-api-key`
+            # (harden-crawl-gitops-foundation 3.1) — plaintext left the manifest
+            # on purpose; the Secret carries the same value until upstream
+            # rotation (task 3.2). Do NOT inline it back.
             - name: DC_API_KEY
-              value: "ydW2xMxlBw2jjlpPvvubaAai66aL4yGkwyLXbhheDia8HipG"
+              valueFrom:
+                secretKeyRef: {name: dc-api-key, key: DC_API_KEY}
             - name: FD_BINDING_ELIGIBILITY_GATE
               value: "enforce"
             - name: FD_SCRIPTS_DIR
