@@ -65,7 +65,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # SQLAlchemy emitted no SAVEPOINT at all and one dead shard still discarded the
 # whole census; the connection is now taken inside each block).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.45"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.46"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
