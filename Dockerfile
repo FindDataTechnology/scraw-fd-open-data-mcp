@@ -60,9 +60,12 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # Failed condition, no failed counter — 0.5.41 read "unknown" and left the
 # policy_runs row dangling in `running`) -> >=0.5.43 (the local kubectl poll
 # branch read jsonpath positionally and reported a starved deadline Job as
-# `success`; all three transports now share _job_state()).
+# `success`; all three transports now share _job_state()) -> >=0.5.45 (census
+# savepoints: 0.5.44 took session.connection() before begin_nested(), so
+# SQLAlchemy emitted no SAVEPOINT at all and one dead shard still discarded the
+# whole census; the connection is now taken inside each block).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.44"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.45"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
