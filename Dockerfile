@@ -62,7 +62,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # branch read jsonpath positionally and reported a starved deadline Job as
 # `success`; all three transports now share _job_state()).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.43"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.44"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
