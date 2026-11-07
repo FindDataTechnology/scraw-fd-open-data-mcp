@@ -56,8 +56,11 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # (add-crawl-job-deadline: Job activeDeadlineSeconds hard ceiling + the
 # `deadline_exceeded` poll state, so a wedged crawler can never again hold a
 # Job at Running forever and starve the host — 2026-11-07 fd-deploy incident).
+# -> >=0.5.42 (deadline-killed Jobs whose pods were never created carry only a
+# Failed condition, no failed counter — 0.5.41 read "unknown" and left the
+# policy_runs row dangling in `running`).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.41"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.42"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
