@@ -63,7 +63,8 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # `success`; all three transports now share _job_state()) -> >=0.5.45 (census
 # savepoints: 0.5.44 took session.connection() before begin_nested(), so
 # SQLAlchemy emitted no SAVEPOINT at all and one dead shard still discarded the
-# whole census; the connection is now taken inside each block).
+# whole census; the connection is now taken inside each block) -> >=0.5.46 (the
+# startup log no longer prints the database password).
 
 ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.46"
 ARG FD_ODP_INSTALL=""
