@@ -52,9 +52,12 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # fd-open-data-mcp is NOT vendored anymore: pip resolves from PyPI. Floor
 # history: >=0.5.17 (eastmoney-ok nodeSelector fix) -> >=0.5.24 -> >=0.5.34
 # (first release whose [data] extra excludes the browser stack — the fleet
-# image must never silently re-fatten with scrapling/playwright).
+# image must never silently re-fatten with scrapling/playwright) -> >=0.5.41
+# (add-crawl-job-deadline: Job activeDeadlineSeconds hard ceiling + the
+# `deadline_exceeded` poll state, so a wedged crawler can never again hold a
+# Job at Running forever and starve the host — 2026-11-07 fd-deploy incident).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.34"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.41"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
