@@ -67,9 +67,10 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # startup log no longer prints the database password) -> >=0.5.47 (yfinance
 # egresses on the proxy the fetch attempt was given; every direct egress in
 # # the fleet is blocked by Yahoo's edge) -> >=0.5.48 (direct-script Jobs stop
-# carrying the database DSN on their command line; it arrives via env).
+# carrying the database DSN on their command line) -> >=0.5.49 (DB/Redis reach the pod
+# via secretKeyRef, not a literal env value).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.48"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.49"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
