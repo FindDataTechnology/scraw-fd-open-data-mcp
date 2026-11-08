@@ -44,7 +44,7 @@ spec:
           - name: fd-harbor-pull
           containers:
           - name: expander
-            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-a2ec888
+            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-16c49f8
             imagePullPolicy: Always
             command: ["python", "-m", "fd_open_data_mcp.coverage.expander"]
             env:
