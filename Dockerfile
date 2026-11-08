@@ -69,9 +69,13 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # # the fleet is blocked by Yahoo's edge) -> >=0.5.48 (direct-script Jobs stop
 # carrying the database DSN on their command line) -> >=0.5.49 (DB/Redis reach the pod
 # via secretKeyRef, not a literal env value) -> >=0.5.50 (series reads are
-# scoped to the concept's own entity_type, so mislabelled rows cannot surface).
+# scoped to the concept's own entity_type, so mislabelled rows cannot surface)
+# -> >=0.5.52 (scoping to the row's DECLARED type could not see the 343,411 rows
+# that declare 'stock' while hanging off a person/industry/fund entity; reads now
+# resolve the entity's own class, and the city-level star-rated series that 0.5.50
+# had made unreadable is readable again).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.50"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.52"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
