@@ -1,0 +1,47 @@
+# Read-only pod visibility for the crawler's worker-cluster ServiceAccount.
+#
+# Why: the reconciler diagnoses a failed Job via `pods_for_job()` + `pod_log_tail`
+# (`reconciler.py::diagnose`). The `crawl-worker` SA only held
+# `batch/jobs: create,get,list` on the worker cluster, so every diagnosis died on
+# `HTTPError: 403 Forbidden` and `policy_runs.detail` degraded to the useless
+# "job … failed before the runner checked in; pod 已回收，无终态可抓".
+# Measured 2026-11-08: policy 2659 failed at 07:17 / 08:00 / 08:08 with no
+# terminal state retained, which is exactly why the real cause (OOMKilled vs the
+# shard fail-fast guard) could not be told apart.
+#
+# Scope: a namespaced Role in `scraw` only — NOT added to the cluster-wide
+# ClusterRole `crawl-worker`, so the SA still cannot read pods anywhere else
+# (verified: list pods in fd-prod stays 403).
+#
+# Apply per worker cluster (cheap-ts / tencent), namespace = that cluster's
+# crawler namespace:
+#   kubectl --context cheap-ts -n scraw apply -f k8s/crawl-worker-pod-reader.yaml
+# Verify (404 = authorized, 403 = still denied):
+#   curl -sk -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer <sa-token>" \
+#     "https://<cluster>:6443/api/v1/namespaces/scraw/pods?limit=1"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: crawl-worker-pod-reader
+  namespace: scraw
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: crawl-worker-pod-reader
+  namespace: scraw
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: crawl-worker-pod-reader
+subjects:
+- kind: ServiceAccount
+  name: crawl-worker
+  namespace: scraw
