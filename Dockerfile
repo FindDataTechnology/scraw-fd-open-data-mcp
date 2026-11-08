@@ -64,9 +64,11 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # savepoints: 0.5.44 took session.connection() before begin_nested(), so
 # SQLAlchemy emitted no SAVEPOINT at all and one dead shard still discarded the
 # whole census; the connection is now taken inside each block) -> >=0.5.46 (the
-# startup log no longer prints the database password).
+# startup log no longer prints the database password) -> >=0.5.47 (yfinance
+# egresses on the proxy the fetch attempt was given; every direct egress in
+# the fleet is blocked by Yahoo's edge).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.46"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.47"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
