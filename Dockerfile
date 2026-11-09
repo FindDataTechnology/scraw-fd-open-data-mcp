@@ -73,9 +73,12 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # -> >=0.5.52 (scoping to the row's DECLARED type could not see the 343,411 rows
 # that declare 'stock' while hanging off a person/industry/fund entity; reads now
 # resolve the entity's own class, and the city-level star-rated series that 0.5.50
-# had made unreadable is readable again).
+# had made unreadable is readable again) -> >=0.5.53 (four ingest scripts still
+# required --db-url on argv or defaulted to a dev DSN, so policies 7/8/2658 died
+# in seconds after the launcher stopped passing it; all now read
+# FD_OPEN_DATA_MCP_DATABASE_URL).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.52"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.53"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
