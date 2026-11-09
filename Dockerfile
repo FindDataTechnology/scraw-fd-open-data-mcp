@@ -79,9 +79,14 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # FD_OPEN_DATA_MCP_DATABASE_URL) -> >=0.5.57 (skipped runs now record WHY they skipped;
 # OPEN-past-cooldown, so a manual_reset HALF_OPEN was never resolved by anyone —
 # is_selectable() excludes it and keys carry no TTL, so the proxy was stranded;
-# cooldown-less OPEN keys had the same fate. Both are probe-eligible now).
+# cooldown-less OPEN keys had the same fate. Both are probe-eligible now)
+# -> >=0.5.58 (a plan whose concepts were ALL refused now closes as `failed`
+# with the refused codes in detail, instead of launching a pod that can only
+# report zeros and closing as no_op "watermark already current" — four enabled
+# policies ran that way for 54 days after their concepts were deprecated on
+# 2026-09-17/19, with no error and no alert).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.57"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.58"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
