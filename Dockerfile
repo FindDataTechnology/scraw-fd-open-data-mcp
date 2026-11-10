@@ -92,7 +92,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # and the failures open circuits on the egress: policy 4 sent 49 such requests on
 # 2026-11-10 and left seven wbgapi circuits OPEN while the pool was healthy).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.60"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.61"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
