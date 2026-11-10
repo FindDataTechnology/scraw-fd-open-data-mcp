@@ -84,9 +84,15 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # with the refused codes in detail, instead of launching a pod that can only
 # report zeros and closing as no_op "watermark already current" — four enabled
 # policies ran that way for 54 days after their concepts were deprecated on
-# 2026-09-17/19, with no error and no alert).
+# 2026-09-17/19, with no error and no alert) -> >=0.5.60 (a window whose period
+# has NOT finished is no longer launched: _next_period_start advances one period
+# and the executor expands to that period's END, so a yearly concept whose
+# watermark was the last completed year asked for <current year>-12-31 — a year
+# that cannot have data. wbgapi answers it with an empty frame, every cell fails,
+# and the failures open circuits on the egress: policy 4 sent 49 such requests on
+# 2026-11-10 and left seven wbgapi circuits OPEN while the pool was healthy).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.58"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.60"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
