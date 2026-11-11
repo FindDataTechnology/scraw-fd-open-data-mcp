@@ -1,14 +1,15 @@
 # Multi-stage build for scraw-fd-open-data-mcp.
 #
-# fd-open-data-mcp is installed FROM PYPI (not vendored) so pushing a new
-# fd-open-data-mcp release + rebuilding this image = automatically picks up new
-# data-source adapters + the proxy-health modules. Override with a build-arg to
-# vendor a local checkout for development:
-#   docker build --build-arg FD_ODM_INSTALL=/build/fd-open-data-mcp[data] \
+# fd-open-data-mcp is NOT vendored in the build context: it is fetched from
+# git at a PINNED COMMIT (FD_ODM_REF) and installed from that source tree
+# (see the ARG block below for why pinning replaced "install latest from
+# PyPI"). To build against a different commit — e.g. a release candidate, or
+# a known-good rollback — pass it explicitly:
+#   docker build --build-arg FD_ODM_REF=<sha> \
 #     --build-arg FD_ODP_INSTALL=/build/fd-open-data-protocol -t ... .
-# (when vendoring, the build context must include those dirs; keep the [data]
-# extra — without it the image silently loses yfinance/edgartools/… and any
-# datasource or probe that imports them crashes with ModuleNotFoundError.)
+# Keep the [data] extra (the RUN installs "/build/fodm-src[data]") — without
+# it the image silently loses yfinance/edgartools/… and any datasource or
+# probe that imports them crashes with ModuleNotFoundError.
 #
 # scraw-fd-open-data-mcp itself is vendored (it's the crawler, not on PyPI).
 #
@@ -92,7 +93,22 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # and the failures open circuits on the egress: policy 4 sent 49 such requests on
 # 2026-11-10 and left seven wbgapi circuits OPEN while the pool was healthy).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.61"
+# fd-open-data-mcp 的来源（2026-11-11 起默认按 commit 钉住，不再"装 PyPI 最新"）
+# -----------------------------------------------------------------------
+# 为什么改：留存语义（`fetch/retention.py` 契约闸 + `fetch/retention_bulk.py` 批量
+# 收尾，含 W 窗口裁剪与 T 只留当期）是**未发布**的代码。镜像从 PyPI 解析到 0.5.61
+# 时，爬虫集群写观测完全不执行契约。库里的指纹很硬：`nav` 1,227/1,236 行、
+# `tenure_days` 4,280/4,280 行、`aum_total` 4,234/4,280 行 `obs_month IS NULL`
+# ——cache 路径必填该列，不填的必然是另一条（或更老的）写入栈。实测 2026-11-11：
+# 基金快照族每天新增一行、旧的从不清，T 类"只留当期"在集群侧从未生效。
+#
+# 钉 commit 还顺带消除"同库双口径"：线上 MCP 服务端镜像走源码构建（有留存语义），
+# 爬虫镜像走 PyPI（没有），两个写者对同一张表执行两套规则。
+# 回退：把 FD_ODM_REF 指向想要的历史 commit 即可；要回到 PyPI 路线就 revert 这次改动。
+# 必须是**完整 40 位 SHA**：`git fetch origin <短sha>` 不认（实测
+# "couldn't find remote ref"），而按全 SHA 拉单个提交是 GitHub 支持的。
+ARG FD_ODM_REF="47b8d7490adea263a2f11ebe06d8a34dc5127a03"
+ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
@@ -103,25 +119,35 @@ RUN python -m venv /opt/venv \
         /opt/venv/bin/pip install --no-cache-dir "$FD_ODP_INSTALL"; \
     fi
 
+# 取源码树：pip 直接从这里装，副本同时喂给 /app/scripts（direct 策略的脚本来源）。
+# 用 `git fetch <sha>` 而不是 clone --depth：GitHub 允许按 SHA 拉单个提交，
+# 不受 main 后续推进影响（钉住的 commit 永远可复现）。
+RUN mkdir -p /build/fodm-src \
+ && git -C /build/fodm-src init -q \
+ && git -C /build/fodm-src remote add origin "$FD_ODM_GIT_URL" \
+ && git -C /build/fodm-src fetch -q --depth 1 origin "$FD_ODM_REF" \
+ && git -C /build/fodm-src checkout -q FETCH_HEAD \
+ && grep -m1 __version__ /build/fodm-src/fd_open_data_mcp/__init__.py \
+ && test -f /build/fodm-src/fd_open_data_mcp/fetch/retention_bulk.py \
+ && grep -q apply_bulk_retention /build/fodm-src/fd_open_data_mcp/fetch/retention_bulk.py
+
 # The dependency install is split across RUN steps deliberately: one giant
 # ~350MB layer wedges transpacific registry pushes (buildx blob upload stalls
 # with no timeout against ccr.ccs.tencentyun.com); ~150MB layers complete.
-RUN /opt/venv/bin/pip install --no-cache-dir "$FD_ODM_INSTALL" \
+RUN /opt/venv/bin/pip install --no-cache-dir "/build/fodm-src[data]" \
  && /opt/venv/bin/pip install --no-cache-dir \
       "akshare>=1.18.94" \
       "pandas>=3.0.5"
 
 # Direct-script policies (crawl_policies.executor='direct') get their script
 # source read from /app/scripts at launch (reconciler _read_script), but the
-# fd-open-data-mcp wheel doesn't ship repo-level scripts/. Pull them from the
-# sdist instead — same recipe as the fd-cn-report rules_db below. Requires the
-# sdist to carry scripts/ (fd-open-data-mcp >= 0.5.36) and the source-aware
-# upsert fix (>= 0.5.37).
-RUN /opt/venv/bin/pip download --no-deps --no-binary :all: fd-open-data-mcp -d /tmp/fodm-src \
- && tar -xzf /tmp/fodm-src/fd_open_data_mcp-*.tar.gz -C /tmp/fodm-src \
- && mkdir -p /build/fodm-scripts \
- && cp /tmp/fodm-src/fd_open_data_mcp-*/scripts/*.py /build/fodm-scripts/ \
- && rm -rf /tmp/fodm-src
+# package wheel doesn't ship repo-level scripts/. Take them from the SAME
+# source tree we just installed — downloading the sdists from PyPI would give
+# a *different* (released) version's scripts, silently reverting the retention
+# wiring those scripts now carry.
+RUN mkdir -p /build/fodm-scripts \
+ && cp /build/fodm-src/scripts/*.py /build/fodm-scripts/ \
+ && test "$(grep -l apply_bulk_retention /build/fodm-scripts/bulk_ingest_*.py | wc -l)" -ge 4
 
 RUN /opt/venv/bin/pip install --no-cache-dir "$FD_CNREPORT_INSTALL" \
  && /opt/venv/bin/pip install --no-cache-dir /build/vendor/fd-datacommons \
