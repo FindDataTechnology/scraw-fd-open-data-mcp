@@ -107,7 +107,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # 回退：把 FD_ODM_REF 指向想要的历史 commit 即可；要回到 PyPI 路线就 revert 这次改动。
 # 必须是**完整 40 位 SHA**：`git fetch origin <短sha>` 不认（实测
 # "couldn't find remote ref"），而按全 SHA 拉单个提交是 GitHub 支持的。
-ARG FD_ODM_REF="47b8d7490adea263a2f11ebe06d8a34dc5127a03"
+ARG FD_ODM_REF="34d55b6c22b9d715b0a9897cad8216fb27780832"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
@@ -129,7 +129,8 @@ RUN mkdir -p /build/fodm-src \
  && git -C /build/fodm-src checkout -q FETCH_HEAD \
  && grep -m1 __version__ /build/fodm-src/fd_open_data_mcp/__init__.py \
  && test -f /build/fodm-src/fd_open_data_mcp/fetch/retention_bulk.py \
- && grep -q apply_bulk_retention /build/fodm-src/fd_open_data_mcp/fetch/retention_bulk.py
+ && grep -q apply_bulk_retention /build/fodm-src/fd_open_data_mcp/fetch/retention_bulk.py \
+ && grep -q "FD_RETENTION_GATE" /build/fodm-src/fd_open_data_mcp/refresh/reconciler.py
 
 # The dependency install is split across RUN steps deliberately: one giant
 # ~350MB layer wedges transpacific registry pushes (buildx blob upload stalls
