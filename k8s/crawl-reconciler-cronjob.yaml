@@ -85,7 +85,7 @@ spec:
             # retention code (no fetch/retention.py, no _snapshot_consolidate), so
             # before this bump the dispatcher and the workers it launched could not
             # enforce any contract. Roll only with a verified worker build.
-            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-1d8a70a
+            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-daec768
             # sha-fae6d2d carries fd-open-data-mcp 0.5.26 (concept-platform-
             # federation mirror: sibling-transaction writes, rows_written per
             # prod NOT NULL DEFAULT 0). Verified pullable from Harbor on xinru
@@ -154,7 +154,7 @@ spec:
             # retention for weeks. History: sha-2302fbe (2026-10-01, browser-free
             # [data] build, fd-open-data-mcp 0.5.34 floor).
             - name: SCRAW_K8S_IMAGE
-              value: "ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-1d8a70a"
+              value: "ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-daec768"
             volumeMounts:
             - name: kubeconfigs
               mountPath: /kubeconfigs
