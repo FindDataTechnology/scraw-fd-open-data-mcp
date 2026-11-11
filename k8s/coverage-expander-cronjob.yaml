@@ -44,7 +44,8 @@ spec:
           - name: fd-harbor-pull
           containers:
           - name: expander
-            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-5539dc5
+            # Same fleet build as the reconciler (retention-aware, pinned commit).
+            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-1d8a70a
             imagePullPolicy: Always
             command: ["python", "-m", "fd_open_data_mcp.coverage.expander"]
             env:
