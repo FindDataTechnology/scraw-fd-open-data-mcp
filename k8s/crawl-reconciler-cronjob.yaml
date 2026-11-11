@@ -155,6 +155,12 @@ spec:
             # [data] build, fd-open-data-mcp 0.5.34 floor).
             - name: SCRAW_K8S_IMAGE
               value: "ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-daec768"
+            # 留存闸门档位：`_common_env` 会把它**透传**给每个爬虫 Job（34d55b6）。
+            # 不在这里设，Job 就落到默认 off——而集群才是大批量写观测的地方。
+            # 档位与两份服务端清单保持一致（当前 warn）；切 enforce 前先确认医药域等
+            # 活跃线的新族都已声明契约，否则它们的写入会静默失败（decisions §5.34）。
+            - name: FD_RETENTION_GATE
+              value: "warn"
             volumeMounts:
             - name: kubeconfigs
               mountPath: /kubeconfigs
