@@ -107,7 +107,18 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # 回退：把 FD_ODM_REF 指向想要的历史 commit 即可；要回到 PyPI 路线就 revert 这次改动。
 # 必须是**完整 40 位 SHA**：`git fetch origin <短sha>` 不认（实测
 # "couldn't find remote ref"），而按全 SHA 拉单个提交是 GitHub 支持的。
-ARG FD_ODM_REF="34d55b6c22b9d715b0a9897cad8216fb27780832"
+# 2026-11-12：34d55b6 → dcbaa57。两组语义一次拿齐，且是**纯超集**——
+# `git merge-base --is-ancestor 34d55b6 dcbaa57` 为真，留存语义（闸门档位透传）
+# 原样保留，只多出集群凭据生命周期那批：
+#   · `visibility/credentials.py`（bound token 寿命判定，STALE_FRACTION=1/3）
+#   · `refresh/reconciler.py` 的 401/403 归因（`WorkerCredentialError` +
+#     消息里带可执行的 rotate 命令）与 `adopt_job_if_present`（响应丢失但 Job 已落地
+#     时采纳，而不是记成 failed）
+# 为什么必须抬：线上派发侧镜像一直是 0.5.61，401 只会被记成"launch failed"，
+# 与"计划坏了"同形；响应丢失那一笔也一直在把成功的 Job 记成失败。
+# 验证依据（抬之前实测，不是看 tag 名）：旧镜像 pod 内 `import` 不到
+# `visibility.credentials`、`WorkerCredentialError` 报 ImportError；0.5.62 本仓镜像里两者都在。
+ARG FD_ODM_REF="dcbaa5766bcd81a1a61079c3053d239005224061"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
