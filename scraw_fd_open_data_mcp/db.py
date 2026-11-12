@@ -110,6 +110,64 @@ def _write_observations_sqlite(eng: Engine, data: list[tuple]) -> tuple[int, int
     return (len(data), after - before)
 
 
+def apply_retention(keys: Iterable[tuple[str, int]]) -> dict:
+    """落库之后执行留存契约（T 只留当期 / W 窗口外淘汰）。
+
+    为什么必须在这里：本模块用**裸 SQL** 写 ``semantic_observations``（见上面的
+    ``INSERT ... ON CONFLICT``），完全绕开包的 ``cache.write_cache*``，所以包里的
+    T 语义在这条路上**从未执行过**。实测（2026-11-12）：``observation_revisions`` 里
+    ``snapshot-consolidate-*`` 全时段 0 条，而 ``akshare/nav`` 因此长回"一实体三日期"
+    （346 个实体、692 行）。当时的"每实体一行"全部来自另一条路——
+    ``bulk_ingest_*.py`` 调 ``apply_bulk_retention``（``bulk-consolidate-*`` 10,456 条）。
+
+    调用点选在 ``close_spider``（一次作业一次），不是每次 flush：``BATCH=50``，一场
+    长爬会被切成上百次 flush，逐次收尾纯属浪费；而收尾本身是幂等的（无可并则空转）。
+
+    ``keys`` 是 ``(source_used, concept_id)`` 的集合。**失败只记日志、不抛**：留存收尾
+    是"写完之后的清理"，不能让一次收尾失败把已经落库的批次判成失败——那会制造
+    "数据在、台账说失败"的假信号，比不合并没有更糟。
+
+    返回 ``{"t_deleted", "w_deleted", "errors"}`` 供调用方记日志。
+    """
+    by_source: dict[str, set[int]] = {}
+    for source, concept_id in keys:
+        if concept_id is None:
+            continue
+        by_source.setdefault(str(source or ""), set()).add(int(concept_id))
+    stats = {"t_deleted": 0, "w_deleted": 0, "errors": 0}
+    if not by_source:
+        return stats
+
+    try:
+        from fd_open_data_mcp.fetch.retention_bulk import apply_bulk_retention
+    except Exception:  # noqa: BLE001 - 镜像里的包可能还没带这个模块
+        import logging
+        logging.getLogger(__name__).warning(
+            "retention: 镜像内的 fd-open-data-mcp 没有 retention_bulk；跳过收尾")
+        return stats
+
+    import logging
+
+    log = logging.getLogger(__name__)
+    eng = _engine()
+    for source, concept_ids in by_source.items():
+        try:
+            with eng.begin() as conn:
+                out = apply_bulk_retention(conn, source=source,
+                                           concept_ids=sorted(concept_ids),
+                                           reason="crawler_write")
+            stats["t_deleted"] += out.get("t_deleted", 0)
+            stats["w_deleted"] += out.get("w_deleted", 0)
+        except Exception:  # noqa: BLE001 - 收尾失败不得影响已落库的批次
+            stats["errors"] += 1
+            log.warning("retention: source=%s 收尾失败（数据已落库，继续）", source,
+                        exc_info=True)
+    if stats["t_deleted"] or stats["w_deleted"]:
+        log.info("retention: T 合并 %d 行 / W 淘汰 %d 行", stats["t_deleted"],
+                 stats["w_deleted"])
+    return stats
+
+
 def report_yield(job_ref: str, attempted_delta: int, new_delta: int) -> None:
     """Incrementally add to a run's yield counters (fix-silent-zero-yield-crawls D2).
 

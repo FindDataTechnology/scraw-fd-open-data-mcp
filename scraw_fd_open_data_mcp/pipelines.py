@@ -35,6 +35,9 @@ class ObservationUpsertPipeline:
         # same loss-on-kill bound as the buffer itself.
         self._attempted = 0
         self._new = 0
+        # 留存收尾的键：(source_used, concept_id)。累积到 close_spider 一次收尾
+        # （见 db.apply_retention 的注释：T 语义在这条裸 SQL 路上从未执行过）。
+        self._retention_keys: set[tuple[str, int]] = set()
 
     @property
     def _job_ref(self) -> str | None:
@@ -75,6 +78,19 @@ class ObservationUpsertPipeline:
 
     def close_spider(self, spider):
         self._flush()
+        # 留存收尾：一次作业一次（不是每次 flush）。失败只记日志——
+        # 收尾是"写完之后的清理"，不能把已经落库的爬取判成失败。
+        if not self._retention_keys:
+            return
+        from scraw_fd_open_data_mcp.db import apply_retention
+
+        try:
+            stats = apply_retention(self._retention_keys)
+            if stats.get("t_deleted") or stats.get("w_deleted") or stats.get("errors"):
+                spider.logger.info("retention after crawl: %s", stats)
+        except Exception:  # noqa: BLE001 - 见 db.apply_retention
+            spider.logger.warning("retention after crawl failed; rows kept",
+                                  exc_info=True)
 
     def _flush(self):
         if not self._buffer:
@@ -86,6 +102,11 @@ class ObservationUpsertPipeline:
         attempted, inserted = write_observations(batch)
         self._attempted += attempted
         self._new += inserted
+        # 记下这批写过哪些 (源, 概念)——收尾在 close_spider 一次做完。
+        for r in batch:
+            cid = r.get("concept_id")
+            if cid is not None:
+                self._retention_keys.add((str(r.get("source_used") or ""), cid))
         # report the DELTA each flush, not the cumulative totals: the run row
         # accumulates server-side, so a mid-run pod restart (fresh pipeline,
         # zeroed counters) can never rewind the recorded yield.
