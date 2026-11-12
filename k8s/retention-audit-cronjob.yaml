@@ -26,18 +26,12 @@ spec:
             - name: fd-harbor-pull
           containers:
             - name: retention
-              # 镜像本身自带 /app/scripts，但它钉的 FD_ODM_REF=0f0070e 早于粒度修复
-              # (244c87c)，所以这里用 ConfigMap 盖成仓里的最新版。两个脚本**必须同目录**：
-              # evict 用 importlib 按 `__file__` 同目录加载 audit_retention_contracts.py。
-              #
-              # ConfigMap `retention-scripts` 由下面这条命令生成（不要手改线上 CM）：
-              #   kubectl -n fd-master create configmap retention-scripts \
-              #     --from-file=audit_retention_contracts.py=scripts/audit_retention_contracts.py \
-              #     --from-file=evict_retention_window.py=scripts/evict_retention_window.py \
-              #     --dry-run=client -o yaml | kubectl apply -f -
-              # 脚本源在 fd-open-data-mcp 仓（244c87c 起含粒度修复）。
-              # 待办：下一次刷机群镜像时把 FD_ODM_REF 抬到 ≥244c87c，然后删掉这份 CM 覆盖。
-              image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-376700c
+              # 脚本直接用镜内的 /app/scripts（`COPY . /app` 放本仓 scripts/，再叠
+              # fodm-src 的 bulk-ingest 脚本，名字不重叠）。FD_ODM_REF 已抬到 244c87c，
+              # 镜内的 audit/evict 都是含 T 分支粒度修复的版本——2026-11-13 在镜内实测过：
+              #   PARTITION BY o.concept_id, o.entity_type, o.entity_id, o.granularity
+              # 两个脚本必须同目录（evict 按 `__file__` 同目录 importlib 加载 audit）。
+              image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-eb366d0
               imagePullPolicy: IfNotPresent
               command: ["bash", "-c"]
               args:
@@ -45,12 +39,12 @@ spec:
                   set -u
                   DSN="$FD_OPEN_DATA_MCP_DATABASE_URL"
                   echo "=== 1/2 契约审计（只读）==="
-                  python /opt/retention/audit_retention_contracts.py --db-url "$DSN"
+                  python /app/scripts/audit_retention_contracts.py --db-url "$DSN"
                   a=$?
                   echo "audit exit=$a  (0=干净 1=容量违规 3=仅契约待补 2=未知)"
                   echo
                   echo "=== 2/2 窗口淘汰（搬进隔离区，可逆；带行数对账）==="
-                  python /opt/retention/evict_retention_window.py --db-url "$DSN" \
+                  python /app/scripts/evict_retention_window.py --db-url "$DSN" \
                       --apply --batch-size 5000 --limit-rows 100000
                   e=$?
                   echo "evict exit=$e  (0=无待淘汰 1=有待淘汰/已执行 2=失败)"
@@ -70,14 +64,6 @@ spec:
                       key: DATABASE_URL
                 - name: PYTHONUNBUFFERED
                   value: "1"
-              volumeMounts:
-                - name: scripts
-                  mountPath: /opt/retention
-                  readOnly: true
               resources:
                 requests: {cpu: 100m, memory: 256Mi}
                 limits: {cpu: "1", memory: 1Gi}
-          volumes:
-            - name: scripts
-              configMap:
-                name: retention-scripts
