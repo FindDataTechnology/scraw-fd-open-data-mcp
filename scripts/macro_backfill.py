@@ -171,6 +171,14 @@ BATCH = 2000
 def upsert(engine, rows: list[dict]) -> int:
     if not rows:
         return 0
+    # 直写脚本也要执行留存契约（与 fd-open-data-mcp/scripts/bulk_ingest_*.py 同范式）：
+    # 本脚本绕开 fetch.cache，少这一步就会写出契约外的行——W 族重抓历史时把超窗行
+    # 写回来、T 族每跑一次多留一个日期，正是审计里 T_class_accruing_history 的成因。
+    from fd_open_data_mcp.fetch.retention_bulk import (
+        apply_bulk_retention, check_bulk_contracts,
+    )
+
+    concept_ids = sorted({int(r["concept_id"]) for r in rows})
     cols = ["concept_id", "entity_type", "entity_id", "date", "value",
             "unit", "source_used", "fetched_at", "granularity"]
     upd = ("value=EXCLUDED.value, unit=EXCLUDED.unit, "
@@ -186,11 +194,15 @@ def upsert(engine, rows: list[dict]) -> int:
         for attempt in range(5):
             try:
                 with engine.begin() as conn:
+                    check_bulk_contracts(conn, source=SOURCE, concept_ids=concept_ids)
                     cur = conn.connection.driver_connection.cursor()
                     try:
                         execute_values(cur, sql, chunk, page_size=500)
                     finally:
                         cur.close()
+                    # 与写入同一事务：先提交再收尾会留下"写了没裁"的状态。
+                    apply_bulk_retention(conn, source=SOURCE, concept_ids=concept_ids,
+                                         reason="macro_backfill")
                 total += len(chunk)
                 break
             except Exception as e:  # noqa: BLE001

@@ -124,6 +124,15 @@ def write_observations(observations):
     """Write observations to database."""
     engine = create_engine(DB_URL)
 
+    # 直写脚本也要执行留存契约（与 fd-open-data-mcp/scripts/bulk_ingest_*.py 同范式）：
+    # 少这一步就会写出契约外的行——T 族每跑一次多留一个日期，而审计只会在事后点名。
+    # 这里按 source 分组：本函数的行自带 source（yfinance 等），契约按源解析。
+    from fd_open_data_mcp.fetch.retention_bulk import apply_bulk_retention
+
+    by_source = {}
+    for obs in observations:
+        by_source.setdefault(str(obs["source"]), set()).add(int(obs["concept_id"]))
+
     with engine.begin() as conn:
         for obs in observations:
             conn.execute(text("""
@@ -138,6 +147,10 @@ def write_observations(observations):
                 "v": obs["value"],
                 "s": obs["source"],
             })
+        # 与写入同一事务：先提交再收尾会留下"写了没裁"的状态。
+        for src, cids in by_source.items():
+            apply_bulk_retention(conn, source=src, concept_ids=sorted(cids),
+                                 reason="financial_consumer")
 
 def main():
     print(f"=== Financial Crawl Consumer [{POD_ID}] ===")

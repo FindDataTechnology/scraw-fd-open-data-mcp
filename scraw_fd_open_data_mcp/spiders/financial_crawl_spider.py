@@ -259,6 +259,10 @@ class FinancialCrawlSpider(scrapy.Spider):
         """Write observations to database."""
         from sqlalchemy import create_engine, text
 
+        # 本方法绕开 ObservationUpsertPipeline 自己开引擎直写，所以管线的留存收尾
+        # 盖不到它——必须在这里同样执行契约（与 bulk_ingest_*.py 同范式）。
+        from fd_open_data_mcp.fetch.retention_bulk import apply_bulk_retention
+
         db_url = self.settings.get(
             "FD_OPEN_DATA_MCP_DATABASE_URL",
             "postgresql+psycopg2://postgres:admin123@fd-open-pg.scraw:5432/postgres"
@@ -267,6 +271,11 @@ class FinancialCrawlSpider(scrapy.Spider):
 
         # Convert value (could be list of obs or single obs)
         observations = value if isinstance(value, list) else [value]
+
+        # 行自带 source，契约按源解析——先按源聚合 concept_id。
+        by_source = {}
+        for obs in observations:
+            by_source.setdefault(str(obs["source"]), set()).add(int(obs["concept_id"]))
 
         for obs in observations:
             with engine.begin() as conn:
@@ -282,5 +291,9 @@ class FinancialCrawlSpider(scrapy.Spider):
                     "v": obs["value"],
                     "s": obs["source"],
                 })
+                # 与两条写入同一事务（本方法逐条开事务，所以逐条收尾）。
+                for src, cids in by_source.items():
+                    apply_bulk_retention(conn, source=src, concept_ids=sorted(cids),
+                                         reason="financial_crawl_spider")
 
         self.logger.info(f"Wrote {len(observations)} observations for {task_data['identifier']}")

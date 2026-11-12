@@ -167,6 +167,14 @@ BATCH = 2000
 def upsert(engine, rows: list[dict]) -> int:
     if not rows:
         return 0
+    # 直写脚本也要执行留存契约（与 fd-open-data-mcp/scripts/bulk_ingest_*.py 同范式）。
+    # polygon 的 price/trading_volume 是 W/730：不裁窗口的话，一次全历史重抓就会把
+    # 超窗行整批写回来——窗口淘汰工具清完还会再长，清一次白清一次。
+    from fd_open_data_mcp.fetch.retention_bulk import (
+        apply_bulk_retention, check_bulk_contracts,
+    )
+
+    concept_ids = sorted({int(r["concept_id"]) for r in rows})
     cols = ["concept_id", "entity_type", "entity_id", "date", "value",
             "unit", "source_used", "fetched_at", "granularity"]
     upd = ("value=EXCLUDED.value, unit=EXCLUDED.unit, "
@@ -182,11 +190,15 @@ def upsert(engine, rows: list[dict]) -> int:
         for attempt in range(5):
             try:
                 with engine.begin() as conn:
+                    check_bulk_contracts(conn, source=SOURCE, concept_ids=concept_ids)
                     cur = conn.connection.driver_connection.cursor()
                     try:
                         execute_values(cur, sql, chunk, page_size=500)
                     finally:
                         cur.close()
+                    # 与写入同一事务：先提交再收尾会留下"写了没裁"的状态。
+                    apply_bulk_retention(conn, source=SOURCE, concept_ids=concept_ids,
+                                         reason="polygon_us_ohlcv")
                 total += len(chunk)
                 break
             except Exception as e:  # noqa: BLE001
