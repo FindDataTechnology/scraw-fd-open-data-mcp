@@ -118,7 +118,18 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # 与"计划坏了"同形；响应丢失那一笔也一直在把成功的 Job 记成失败。
 # 验证依据（抬之前实测，不是看 tag 名）：旧镜像 pod 内 `import` 不到
 # `visibility.credentials`、`WorkerCredentialError` 报 ImportError；0.5.62 本仓镜像里两者都在。
-ARG FD_ODM_REF="dcbaa5766bcd81a1a61079c3053d239005224061"
+#
+# 2026-11-12（第二次）：dcbaa57 → 0f0070e。同样是**纯超集**
+# （`git merge-base --is-ancestor dcbaa57 0f0070e` 为真），只多出这三笔：
+#   · fix(astock) 限流退避 + 连续三次即中止（`RATE_LIMIT_BACKOFF_S` /
+#     `run_symbols`）——原来 3 次重试之间**零等待**，5203 个符号各打 3 次，
+#     akshare 自己写着"反复触发后可能需要 40 分钟以上"，于是 5 分钟封禁被拖长
+#   · fix(astock) 补 `import os`（DSN 回退分支 NameError，线上 ConfigMap 那份缺）
+#   · fix(scan) 挂载在但零 token 不再报 checked:true
+# 为什么必须抬：`reconciler._read_script` 的搜索顺序是 `/app/scripts` →
+# `/opt/fd-scripts`，**镜像内那份优先**；所以改 ConfigMap 对派发出去的 Job 无效
+# （改过并同步了，仍不生效，实测镜像内 sha 不含 `RATE_LIMIT_BACKOFF_S`）。
+ARG FD_ODM_REF="0f0070e13cabcbf4a870ec7bfdca1c775c4ae2e5"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
