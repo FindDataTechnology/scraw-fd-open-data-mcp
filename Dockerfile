@@ -129,7 +129,16 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # 为什么必须抬：`reconciler._read_script` 的搜索顺序是 `/app/scripts` →
 # `/opt/fd-scripts`，**镜像内那份优先**；所以改 ConfigMap 对派发出去的 Job 无效
 # （改过并同步了，仍不生效，实测镜像内 sha 不含 `RATE_LIMIT_BACKOFF_S`）。
-ARG FD_ODM_REF="0f0070e13cabcbf4a870ec7bfdca1c775c4ae2e5"
+# 2026-11-13（第三次）：0f0070e → 244c87c。同样是**纯超集**
+# （`git merge-base --is-ancestor 0f0070e 244c87c` 为真），只多出 6 笔：
+#   · fix(retention) 窗口淘汰工具的 T 分支补 `granularity` 分区（`244c87c`）——
+#     **这是抬 ref 的唯一动机**：镜内 `/app/scripts/evict_retention_window.py` 此前
+#     按 (概念, 实体) 分区，会把月频行当成"更旧的一条"搬进隔离区
+#   · feat(scan) 挂载面与 clusters 表不一致时自动告警 + credentials 扫描
+#     （crawler 不 import `visibility.scan`，只是包内多一个模块）
+#   · docs/chore 若干
+# 抬完之后，`fd-master/retention-audit` 那个 CronJob 就不再需要 ConfigMap 覆盖脚本。
+ARG FD_ODM_REF="244c87c1302f7da9caee5cb4f42027a7b5ab0752"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
