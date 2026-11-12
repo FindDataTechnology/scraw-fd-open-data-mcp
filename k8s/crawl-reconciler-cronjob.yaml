@@ -153,8 +153,11 @@ spec:
             # authoritative but is never read" that made the fleet bypass
             # retention for weeks. History: sha-2302fbe (2026-10-01, browser-free
             # [data] build, fd-open-data-mcp 0.5.34 floor).
+            # 这个 pin **结构性地落后一拍**：每次 push 都会出片，而 pin 只能指向已经
+            # 存在的 tag，所以它永远指着上一次发布。别为了追它再提交一次——追不完。
+            # 真值始终是 DB 的 `clusters.image`（k8s-multi 下派活读那一行）。
             - name: SCRAW_K8S_IMAGE
-              value: "ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-376700c"
+              value: "ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-eb366d0"
             # 留存闸门档位：`_common_env` 会把它**透传**给每个爬虫 Job（34d55b6）。
             # 不在这里设，Job 就落到默认 off——而集群才是大批量写观测的地方。
             # 档位与两份服务端清单保持一致（当前 warn）；切 enforce 前先确认医药域等
