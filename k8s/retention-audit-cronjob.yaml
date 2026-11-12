@@ -1,0 +1,83 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retention-audit
+  namespace: fd-master
+  labels:
+    app: retention-audit
+    domain: fd-open-data
+spec:
+  # 每天 05:20 CST（= 21:20Z 前一天）。刻意避开爬虫作业窗口：06:37Z/06:52Z/10:35Z/13:37Z。
+  schedule: "20 5 * * *"
+  timeZone: Asia/Shanghai
+  # 上一轮没跑完就不叠新一轮——淘汰工具会搬行，并发两轮会互相对不上账。
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 172800
+      template:
+        spec:
+          restartPolicy: Never
+          imagePullSecrets:
+            - name: fd-harbor-pull
+          containers:
+            - name: retention
+              # 镜像本身自带 /app/scripts，但它钉的 FD_ODM_REF=0f0070e 早于粒度修复
+              # (244c87c)，所以这里用 ConfigMap 盖成仓里的最新版。两个脚本**必须同目录**：
+              # evict 用 importlib 按 `__file__` 同目录加载 audit_retention_contracts.py。
+              #
+              # ConfigMap `retention-scripts` 由下面这条命令生成（不要手改线上 CM）：
+              #   kubectl -n fd-master create configmap retention-scripts \
+              #     --from-file=audit_retention_contracts.py=scripts/audit_retention_contracts.py \
+              #     --from-file=evict_retention_window.py=scripts/evict_retention_window.py \
+              #     --dry-run=client -o yaml | kubectl apply -f -
+              # 脚本源在 fd-open-data-mcp 仓（244c87c 起含粒度修复）。
+              # 待办：下一次刷机群镜像时把 FD_ODM_REF 抬到 ≥244c87c，然后删掉这份 CM 覆盖。
+              image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-376700c
+              imagePullPolicy: IfNotPresent
+              command: ["bash", "-c"]
+              args:
+                - |
+                  set -u
+                  DSN="$FD_OPEN_DATA_MCP_DATABASE_URL"
+                  echo "=== 1/2 契约审计（只读）==="
+                  python /opt/retention/audit_retention_contracts.py --db-url "$DSN"
+                  a=$?
+                  echo "audit exit=$a  (0=干净 1=容量违规 3=仅契约待补 2=未知)"
+                  echo
+                  echo "=== 2/2 窗口淘汰（搬进隔离区，可逆；带行数对账）==="
+                  python /opt/retention/evict_retention_window.py --db-url "$DSN" \
+                      --apply --batch-size 5000 --limit-rows 100000
+                  e=$?
+                  echo "evict exit=$e  (0=无待淘汰 1=有待淘汰/已执行 2=失败)"
+                  # 退出码 1 的语义是"有待淘汰且已搬完"，是**有活干**不是失败；
+                  # 照原样交给 CronJob 就会每天报 Failed，红久了就没人看红。
+                  case "$e" in 0|1) e=0 ;; esac
+                  # 3 = 新族还没声明契约。医药域在建新族时会常态出现，不判失败但留痕；
+                  # 1（容量违规）与 2（未知）必须红——"未知不等于通过"。
+                  case "$a" in 3) echo "WARN 仅有契约待补（新族在建，不判失败）"; a=0 ;; esac
+                  [ "$a" -ne 0 ] && exit "$a"
+                  exit "$e"
+              env:
+                - name: FD_OPEN_DATA_MCP_DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: fd-db-secret
+                      key: DATABASE_URL
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+              volumeMounts:
+                - name: scripts
+                  mountPath: /opt/retention
+                  readOnly: true
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {cpu: "1", memory: 1Gi}
+          volumes:
+            - name: scripts
+              configMap:
+                name: retention-scripts
