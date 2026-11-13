@@ -138,7 +138,17 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 #     （crawler 不 import `visibility.scan`，只是包内多一个模块）
 #   · docs/chore 若干
 # 抬完之后，`fd-master/retention-audit` 那个 CronJob 就不再需要 ConfigMap 覆盖脚本。
-ARG FD_ODM_REF="244c87c1302f7da9caee5cb4f42027a7b5ab0752"
+# 2026-11-13（第四次）：244c87c → 9221ec2，同样**纯超集**
+# （`git merge-base --is-ancestor 244c87c 9221ec2` 为真），多 12 笔，关键一笔：
+#   · fix(audit) 审计补 `date_not_iso` 判定（`9221ec2`）——**这是抬 ref 的唯一动机**。
+#     `date` 是 varchar：W 的淘汰判据是 `o.date < to_char(…)` 的字符串比较，T 的合并
+#     判据是 `ORDER BY o.date DESC`。一个 `LATEST`/`2026-10` 混进 W 就永不淘汰、混进 T
+#     就挤掉真正的当期行，两种都无声。实测 W 918,629 行、T 28,233 行的 date 100% 定长
+#     ISO，今天安全——但**此前没有任何闸在守**，这条判定就是把那个巧合变成判据。
+#   · 其余：runbook 判据 (d) 按类拆/(e) 通配兜底/§9 改完 CronJob 要实跑当前那份
+# 本次**只**滚 `fd-master/retention-audit` 这个 CronJob 的镜像，不动 `clusters.image`
+# ——爬虫机队的写入路径一行没改，机队留在 sha-eb366d0 是正确状态。
+ARG FD_ODM_REF="9221ec2647b4e8ff89f0035561efdb0c996b6a33"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
