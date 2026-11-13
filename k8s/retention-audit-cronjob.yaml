@@ -54,6 +54,41 @@ spec:
                   # 3 = 新族还没声明契约。医药域在建新族时会常态出现，不判失败但留痕；
                   # 1（容量违规）与 2（未知）必须红——"未知不等于通过"。
                   case "$a" in 3) echo "WARN 仅有契约待补（新族在建，不判失败）"; a=0 ;; esac
+                  echo
+                  echo "=== 3/3 隔离区体量（涨得快＝契约或写入出了问题，不是垃圾）==="
+                  # 隔离区**不设过期**：它的全部价值就是"可逆"。所以它必须可见——
+                  # 没人报体量的话，它涨到多大都不会有人知道。纯报表，`|| true` 兜底，
+                  # 绝不因为它把作业判红。
+                  python - <<'QEOF' || echo "（隔离区统计失败，不影响作业结论）"
+                  import os
+                  from sqlalchemy import create_engine, text
+                  eng = create_engine(os.environ["FD_OPEN_DATA_MCP_DATABASE_URL"])
+                  with eng.connect() as c:
+                      # 隔离表是**两个**工具共用的：留存淘汰（batch_id 以 retention- 开头）
+                      # 与错挂行的隔离（其它批次）。混在一起报，会让人以为 F 类也被淘汰过。
+                      rows = c.execute(text("""
+                          select case when q.batch_id like 'retention-%' then 'retention'
+                                      else 'other' end as origin,
+                                 coalesce(ct.retention_class,'?') as cls,
+                                 count(*) as n
+                            from semantic_observations_quarantine q
+                            left join concepts co on co.id = q.concept_id
+                            left join data_retention_contracts ct
+                              on ct.source = q.source_used
+                             and ct.family = split_part(co.code,'.',1)
+                           group by 1, 2 order by 1, 3 desc""")).all()
+                      total = sum(r[2] for r in rows)
+                      print("  合计 %d 行 ≈ %.0f MB" % (total, total * 355 / 1024 / 1024))
+                      for origin, label in (
+                              ("retention", "留存淘汰（按类；这里出现 F/P 才异常）"),
+                              ("other", "其它隔离（错挂行等，非留存造成）")):
+                          sub = [(cls, n) for (o, cls, n) in rows if o == origin]
+                          if not sub:
+                              continue
+                          print("  -- %s" % label)
+                          for cls, n in sub:
+                              print("     %-3s %10d" % (cls, n))
+                  QEOF
                   [ "$a" -ne 0 ] && exit "$a"
                   exit "$e"
               env:
