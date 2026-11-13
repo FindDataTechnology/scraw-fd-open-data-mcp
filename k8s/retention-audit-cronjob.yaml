@@ -42,7 +42,7 @@ spec:
                 - |
                   set -u
                   DSN="$FD_OPEN_DATA_MCP_DATABASE_URL"
-                  echo "=== 1/2 契约审计（只读）==="
+                  echo "=== 1/2 契约审计（只读；范围＝master 本地）==="
                   python /app/scripts/audit_retention_contracts.py --db-url "$DSN"
                   a=$?
                   echo "audit exit=$a  (0=干净 1=容量违规 3=仅契约待补 2=未知)"
@@ -93,6 +93,41 @@ spec:
                           for cls, n in sub:
                               print("     %-3s %10d" % (cls, n))
                   QEOF
+                  echo
+                  echo "=== 4/4 分片体量（执行面之外的 98.5%；只读，慢=正常）==="
+                  # 上面 1/2、2/2 与 3/3 全都只看 master 本地 `semantic_observations`。
+                  # 两个分片上的行对审计与淘汰**不存在**：2026-11-13 实测
+                  #   ft_sem_obs_xinru2 20,120,615（akshare 19,559,474 + akshare_misbound 561,141）
+                  #   ft_sem_obs_xinru3 48,316,490（astock_daily）
+                  # 而 master 只有 1,042,939——也就是说"窗口已执行"只覆盖语料的 1.5%。
+                  # 这一段不改任何东西，只让那 98.5% **有读数**：没有它，分片涨到多大都没人知道，
+                  # 而"要不要把淘汰扩到分片"这个决定缺了分母就永远谈不成。
+                  # 给 240s 上限：FDW 全表扫描本来慢，但绝不允许它把整轮作业拖死。
+                  # `|| true` 兜底——分片不可达是分片的事，不是留存作业的结论。
+                  python - <<'SEOF' || echo "（分片统计失败或超时，不影响作业结论）"
+                  import os
+                  from sqlalchemy import create_engine, text
+                  eng = create_engine(os.environ["FD_OPEN_DATA_MCP_DATABASE_URL"])
+                  FTS = (("xinru2", "ft_sem_obs_xinru2"), ("xinru3", "ft_sem_obs_xinru3"))
+                  grand = 0
+                  for shard, ft in FTS:
+                      with eng.connect() as c:
+                          # 每个分片单独一个连接与上限：一个分片挂了不该拖累另一个。
+                          c.execute(text("set statement_timeout='240s'"))
+                          try:
+                              rows = c.execute(text(
+                                  "select source_used, count(*) n from %s "
+                                  "group by 1 order by 2 desc limit 6" % ft)).all()
+                          except Exception as exc:  # noqa: BLE001
+                              print("  %s: 读不到（%s）" % (shard, str(exc).splitlines()[0][:60]))
+                              continue
+                          tot = sum(int(r[1]) for r in rows)
+                          grand += tot
+                          print("  -- %s（%s）合计 %d 行" % (shard, ft, tot))
+                          for src, n in rows:
+                              print("     %-22s %10d" % (src, n))
+                  print("  分片合计 %d 行（master 本地 1,042,939 不计入；后者才是审计/淘汰看得到的）" % grand)
+                  SEOF
                   [ "$a" -ne 0 ] && exit "$a"
                   exit "$e"
               env:
