@@ -146,9 +146,12 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 #     就挤掉真正的当期行，两种都无声。实测 W 918,629 行、T 28,233 行的 date 100% 定长
 #     ISO，今天安全——但**此前没有任何闸在守**，这条判定就是把那个巧合变成判据。
 #   · 其余：runbook 判据 (d) 按类拆/(e) 通配兜底/§9 改完 CronJob 要实跑当前那份
+# 2026-11-14：抬到 82831c9 —— 带上 reconciler 的悬行自愈（cc8607e：新终态 stalled/skipped、
+# 超龄回收、单飞跳过落成可查行）与 astock_daily/price 保留契约（2549fcb，seed 矩阵同步）。
+# 仍只滚控制面（crawl-reconciler），cluster 行保持 sha-eb366d0。
 # 本次**只**滚 `fd-master/retention-audit` 这个 CronJob 的镜像，不动 `clusters.image`
 # ——爬虫机队的写入路径一行没改，机队留在 sha-eb366d0 是正确状态。
-ARG FD_ODM_REF="9221ec2647b4e8ff89f0035561efdb0c996b6a33"
+ARG FD_ODM_REF="82831c928b0a47cec7dc9e5322850b73a321b171"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
