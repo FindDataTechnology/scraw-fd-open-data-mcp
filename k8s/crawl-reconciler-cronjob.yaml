@@ -85,7 +85,13 @@ spec:
             # retention code (no fetch/retention.py, no _snapshot_consolidate), so
             # before this bump the dispatcher and the workers it launched could not
             # enforce any contract. Roll only with a verified worker build.
-            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-376700c
+            # 2026-11-14：sha-2f2ccd2 = FD_ODM_REF 82831c9 的构建，带上落在该 commit 的
+            # reconciler 悬行自愈（cc8607e：新终态 stalled/skipped、policy_run_max_age_seconds()
+            # = activeDeadlineSeconds+900、三条超龄回收）与 astock_daily/price 保留契约进 seed 矩阵
+            # （2549fcb）。此前镜像里 policy_run_max_age_seconds 不存在 ⇒ Job 变 unresolvable 时
+            # 那条 running 行永久悬着，单飞把该策略永久堵死（11-09 之后个股日线全停）。
+            # 验过才换：镜像内 policy_run_max_age_seconds()=11700、stalled×13、skipped×12。
+            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-2f2ccd2
             # sha-fae6d2d carries fd-open-data-mcp 0.5.26 (concept-platform-
             # federation mirror: sibling-transaction writes, rows_written per
             # prod NOT NULL DEFAULT 0). Verified pullable from Harbor on xinru
