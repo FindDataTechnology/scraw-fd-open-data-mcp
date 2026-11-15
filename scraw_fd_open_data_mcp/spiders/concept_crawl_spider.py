@@ -109,6 +109,18 @@ class ConceptCrawlSpider(scrapy.Spider):
                 self.logger.info("cell budget: nothing abandoned (budget %d)",
                                  _cells["budget"])
         job = os.environ.get("SCRAW_JOB_REF")
+        if _cells and job and _cells["cells_abandoned"]:
+            # Ledger side of the same fact (surface-abandoned-cells-on-run-row):
+            # without it a fully abandoned run (attempted=0, new=0, Job succeeded)
+            # reads as `zero_yield` — "fetched but stored nothing" — which has the
+            # opposite remedy. Guarded by run_ledger: a missing column (DB older
+            # than migration 0025) or an unreachable ledger only warns.
+            from scraw_fd_open_data_mcp.run_ledger import record_abandoned
+
+            record_abandoned(
+                self.settings.get("FD_OPEN_DATA_MCP_DATABASE_URL"), job,
+                _cells["cells_abandoned"],
+            )
         if not job:
             return
         try:
