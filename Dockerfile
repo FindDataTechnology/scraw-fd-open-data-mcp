@@ -54,7 +54,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # (first release whose [data] extra excludes the browser stack — the fleet
 # image must never silently re-fatten with scrapling/playwright).
 
-ARG FD_ODM_INSTALL="fd-open-data-mcp[data]>=0.5.34"
+ARG FD_ODM_INSTALL="fd-open-data-mcp[data] @ git+https://github.com/FindDataTechnology/fd-open-data-mcp@d64f9e9c00f9c1098af753e37282ef8c08d11c51"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
 
