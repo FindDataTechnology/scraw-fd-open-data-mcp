@@ -118,7 +118,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # 与"计划坏了"同形；响应丢失那一笔也一直在把成功的 Job 记成失败。
 # 验证依据（抬之前实测，不是看 tag 名）：旧镜像 pod 内 `import` 不到
 # `visibility.credentials`、`WorkerCredentialError` 报 ImportError；0.5.62 本仓镜像里两者都在。
-ARG FD_ODM_REF="dcbaa5766bcd81a1a61079c3053d239005224061"
+ARG FD_ODM_REF="1dd7c6e44b3243d6f5531dfbfc943dba746f4984"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
