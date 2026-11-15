@@ -1,3 +1,8 @@
+# ⚠ 同一对象在 fd-open-data-mcp 仓也有一份清单（k8s/fd-master/NN-*.yaml）。
+#   两份都按 2026-11-14 的 live spec 对齐过（此前有 4 处陈旧：镜像 tag、
+#   imagePullPolicy、env 里的 SCRAW_K8S_IMAGE、缺 FD_RETENTION_GATE）。
+#   apply 任何一份之前先 `kubectl -n fd-master diff -f <file>`：这个对象的
+#   generation 已经到几十，live 是被人就地 patch 过的，仓里永远要重新对一次。
 # Coverage-expansion wave orchestrator (expand-crawl-coverage).
 #
 # Runs on the CONTROL cluster (guangzhou-xinru k3s) in the fd-master namespace
@@ -45,7 +50,7 @@ spec:
           containers:
           - name: expander
             # Same fleet build as the reconciler (retention-aware, pinned commit).
-            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-376700c
+            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-625c804
             imagePullPolicy: Always
             command: ["python", "-m", "fd_open_data_mcp.coverage.expander"]
             env:
