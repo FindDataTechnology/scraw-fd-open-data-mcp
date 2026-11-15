@@ -35,6 +35,8 @@ import os
 
 from scrapy.http import TextResponse
 
+from scraw_fd_open_data_mcp import cell_budget
+
 
 class _FnStub:
     def __init__(self, command: str):
@@ -156,6 +158,18 @@ class FetchHandler:
         snapshot_mode = bool(m.get("snapshot"))
         start, end = m.get("start"), m.get("end")
 
+        # Per-run stop-loss (cell_budget module): a (concept, entity) pair whose
+        # consecutive failed cells reached the budget gets no further fetches in
+        # this run. Checked before the chain is built so an abandoned cell costs
+        # no DB query and no upstream call — and writes no fetch_log row
+        # (abandoned is deliberately NOT "attempted"; see the module docstring).
+        pair = (concept_id, entity_type, entity_id)
+        if cell_budget.is_abandoned(pair):
+            cell_budget.note_skipped(pair)
+            resp = TextResponse(request.url, status=204, body=b"", request=request)
+            resp.headers[b"x-fd-abandoned"] = b"1"
+            return resp
+
         # The source chain to try: explicit ranked_sources in meta, else the single source.
         chain = m.get("ranked_sources") or [
             {"source": m["source"], "command": m["command"], "column_name": m["column"],
@@ -241,6 +255,10 @@ class FetchHandler:
             finally:
                 s.close()
 
+        # This cell is really being worked (not abandoned): count it, and keep
+        # the endpoints it is about to walk for the run summary.
+        cell_budget.note_attempt(pair, [rs.get("source") for rs in chain])
+
         last_err = None
         for rs in chain:
             source, command, column = rs["source"], rs["command"], rs.get("column_name") or m["column"]
@@ -272,6 +290,7 @@ class FetchHandler:
             if snapshot_mode:
                 frame = _extract_snapshot(adapter, result, column, date)
                 if frame:
+                    cell_budget.note_success(pair)
                     return TextResponse(
                         request.url, status=200,
                         body=json.dumps(frame, ensure_ascii=False, default=str).encode(),
@@ -285,6 +304,7 @@ class FetchHandler:
             if series_mode:
                 series = _extract_series(adapter, result, column, start, end)
                 if series:
+                    cell_budget.note_success(pair)
                     return TextResponse(
                         request.url, status=200,
                         body=json.dumps(series, ensure_ascii=False, default=str).encode(),
@@ -299,9 +319,19 @@ class FetchHandler:
             if value is None:
                 # no data for this date from this source - try the next source
                 continue
+            cell_budget.note_success(pair)
             return TextResponse(request.url, status=200, body=str(value).encode(), request=request)
 
-        # all sources either had no value or failed
+        # all sources either had no value or failed. This cell counts against
+        # the pair's per-run budget: after `SCRAW_CELL_FAILURE_BUDGET`
+        # consecutive such cells the pair is abandoned for the rest of the run.
+        if cell_budget.note_exhausted(pair):
+            spider.logger.info(
+                "cell-failure budget reached for concept=%s entity=%s/%s — "
+                "abandoning its remaining cells this run (endpoints tried: %s)",
+                pair[0], pair[1], pair[2],
+                ",".join(sorted({str(rs.get("source")) for rs in chain})),
+            )
         if last_err:
             return TextResponse(request.url, status=503, body=b"", request=request)
         return TextResponse(request.url, status=204, body=b"", request=request)

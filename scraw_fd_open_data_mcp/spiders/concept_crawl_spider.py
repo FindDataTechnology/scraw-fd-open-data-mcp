@@ -31,6 +31,12 @@ class ConceptCrawlSpider(scrapy.Spider):
             raise ValueError("ConceptCrawlSpider requires a CrawlPlan path: -a plan=path.json")
         with open(plan, "r", encoding="utf-8") as f:
             self.plan = json.load(f)
+        # The cell-failure budget is PER RUN (see cell_budget): zero the counters
+        # at the start of every crawl so a second crawl in the same process (or a
+        # re-run after a repaired upstream) never inherits an abandoned pair.
+        from scraw_fd_open_data_mcp import cell_budget as _budget
+
+        _budget.reset()
 
     @property
     def db_url(self) -> str:
@@ -71,6 +77,37 @@ class ConceptCrawlSpider(scrapy.Spider):
         resumed per-request (the expander relaunches the chunk fresh), so
         the key has no second life. Best-effort: never break the close.
         """
+        # Say what the per-run stop-loss gave up on BEFORE the early return
+        # below: a run that abandoned 40 entities must not read like a clean
+        # run, and an unset SCRAW_JOB_REF is exactly the case where nobody
+        # would otherwise see it (see scraw_fd_open_data_mcp.cell_budget).
+        try:
+            from scraw_fd_open_data_mcp import cell_budget as _budget
+
+            _cells = _budget.summary()
+        except Exception:  # noqa: BLE001 - reporting must never break the close
+            _cells = None
+        if _cells:
+            if _cells["cells_abandoned"]:
+                self.logger.warning(
+                    "ABANDONED %d cell(s) across %d (concept, entity) pair(s) "
+                    "— budget %d, reason no_candidate_has_data; these cells were NOT fetched",
+                    _cells["cells_abandoned"], _cells["pairs_abandoned"],
+                    _cells["budget"],
+                )
+                for _p in _cells["pairs"][:20]:
+                    self.logger.warning(
+                        "  abandoned concept=%s entity=%s/%s cells=%d attempted=%d endpoints=%s",
+                        _p["concept_id"], _p["entity_type"], _p["entity_id"],
+                        _p["cells_abandoned"], _p["cells_attempted"],
+                        ",".join(_p["endpoints_tried"]) or "-",
+                    )
+                if len(_cells["pairs"]) > 20:
+                    self.logger.warning("  …and %d more pair(s)",
+                                        len(_cells["pairs"]) - 20)
+            else:
+                self.logger.info("cell budget: nothing abandoned (budget %d)",
+                                 _cells["budget"])
         job = os.environ.get("SCRAW_JOB_REF")
         if not job:
             return
