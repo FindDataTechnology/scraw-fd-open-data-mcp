@@ -151,7 +151,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # 仍只滚控制面（crawl-reconciler），cluster 行保持 sha-eb366d0。
 # 本次**只**滚 `fd-master/retention-audit` 这个 CronJob 的镜像，不动 `clusters.image`
 # ——爬虫机队的写入路径一行没改，机队留在 sha-eb366d0 是正确状态。
-ARG FD_ODM_REF="82831c928b0a47cec7dc9e5322850b73a321b171"
+ARG FD_ODM_REF="59f5f4c8dc22ec4247dc7d3833f9ec4bdf18c085"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
