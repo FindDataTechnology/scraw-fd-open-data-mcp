@@ -8,10 +8,16 @@ lose when inlined into the spider's close hook:
 1. **Accounting must never fail a crawl.** A missing column (a DB whose image
    predates the migration), an unreachable ledger, a typo in the URL — all of it
    degrades to one warning line. The crawl has already done its work by then.
-2. **"Not reported" is not "zero".** The column is nullable on purpose: an
-   executor that does not write it leaves NULL, and a reader must say "not
-   reported" rather than "0 abandoned". So this function never writes 0 — it
-   either adds a positive count or does nothing.
+2. **"Not reported" and "zero" are different facts — so both get written.** The
+   column stays nullable on purpose: NULL means *this run's executor did not
+   report* (an older image, or a write that could not happen), and a reader must
+   say "not reported" rather than "0 abandoned". But the close hook always has
+   the per-run summary in hand, so "zero" is an available fact and gets written
+   as ``0``. Without that, the column would read the same for "old executor" and
+   "new executor, nothing abandoned" — and the *common* case (a healthy run that
+   abandoned nothing) would be the one nobody could read. Measured 2026-11-16:
+   six scheduled rounds, all zero-abandonment, all NULL, which is exactly the
+   ambiguity this avoids.
 
 Keeping it here (rather than in ``cell_budget``) because that module is pure
 per-run state with no I/O; folding a DB write into it would make the state
@@ -39,6 +45,12 @@ def record_abandoned(
 ) -> bool:
     """Add ``count`` to ``policy_runs.rows_abandoned`` for ``job_ref``.
 
+    ``count`` may be ``0`` (a run that abandoned nothing): the close hook knows
+    the number unconditionally, so writing it is what keeps NULL meaning "did not
+    report" only. A negative count is refused — it cannot come from the summary,
+    so it means the caller is confused, and inventing a number there is worse
+    than leaving the trace to the log line.
+
     Returns True when the UPDATE ran, False when it was skipped or failed.
     Never raises: the caller is a spider's close hook, where an exception would
     turn a finished crawl into a failed Job.
@@ -46,7 +58,7 @@ def record_abandoned(
     ``engine`` is injectable for tests (sqlite in-memory); production passes only
     the URL.
     """
-    if not job_ref or count <= 0:
+    if not job_ref or count < 0:
         return False
     try:
         own_engine = engine is None

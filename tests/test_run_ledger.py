@@ -1,8 +1,8 @@
 """Offline tests for the ledger write (no Postgres, no network, no Scrapy).
 
 The point of these arms is the *guards*, not the SQL: an accounting write that
-can fail a finished crawl, or that writes 0 where the truth is "not reported",
-is worse than no write at all. Each arm pins one of those.
+can fail a finished crawl, or that leaves NULL where the executor actually
+reported "zero", is worse than no write at all. Each arm pins one of those.
 """
 from __future__ import annotations
 
@@ -49,9 +49,26 @@ def test_leaves_attempted_and_new_untouched(engine):
     assert _value(engine, "rows_new") == 0
 
 
-def test_never_writes_zero(engine):
-    """A zero would erase the "not reported" distinction the column is nullable for."""
-    assert record_abandoned(None, "cheap9/crawl-policy-1-x", 0, engine=engine) is False
+def test_writes_zero_so_null_keeps_its_own_meaning(engine):
+    """Zero is a reported fact; NULL must stay reserved for "did not report".
+
+    The old shape ("never write 0") made a healthy round — the common case —
+    indistinguishable from a round executed by an image that predates 0025.
+    """
+    assert record_abandoned(None, "cheap9/crawl-policy-1-x", 0, engine=engine) is True
+    assert _value(engine) == 0
+
+
+def test_zero_does_not_erase_an_earlier_count(engine):
+    """COALESCE(...)+0 keeps an already-recorded count instead of overwriting it."""
+    record_abandoned(None, "cheap9/crawl-policy-1-x", 45, engine=engine)
+    record_abandoned(None, "cheap9/crawl-policy-1-x", 0, engine=engine)
+    assert _value(engine) == 45
+
+
+def test_negative_count_is_refused(engine):
+    """A negative count cannot come from cell_budget.summary(); refuse it."""
+    assert record_abandoned(None, "cheap9/crawl-policy-1-x", -1, engine=engine) is False
     assert _value(engine) is None
 
 

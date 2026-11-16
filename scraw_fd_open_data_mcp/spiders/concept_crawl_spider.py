@@ -105,16 +105,34 @@ class ConceptCrawlSpider(scrapy.Spider):
                 if len(_cells["pairs"]) > 20:
                     self.logger.warning("  …and %d more pair(s)",
                                         len(_cells["pairs"]) - 20)
+            elif _cells["max_cells_per_pair"] < _cells["budget"]:
+                # The budget counts consecutive failures of ONE pair, so a run
+                # whose largest pair planned fewer cells than the budget could
+                # not have abandoned anything whatever the upstreams did. Saying
+                # the same "nothing abandoned" there reads as "every pair had
+                # data", which is a different (and unverified) claim — measured
+                # 2026-11-16 on a series policy: one cell per pair, three retries,
+                # streak ceiling 3 against a budget of 12.
+                self.logger.info(
+                    "cell budget could not fire: largest pair planned %d cell(s), "
+                    "budget %d — nothing abandoned because the budget was out of "
+                    "reach this run, not because every pair had data",
+                    _cells["max_cells_per_pair"], _cells["budget"],
+                )
             else:
                 self.logger.info("cell budget: nothing abandoned (budget %d)",
                                  _cells["budget"])
         job = os.environ.get("SCRAW_JOB_REF")
-        if _cells and job and _cells["cells_abandoned"]:
+        if _cells and job:
             # Ledger side of the same fact (surface-abandoned-cells-on-run-row):
             # without it a fully abandoned run (attempted=0, new=0, Job succeeded)
             # reads as `zero_yield` — "fetched but stored nothing" — which has the
-            # opposite remedy. Guarded by run_ledger: a missing column (DB older
-            # than migration 0025) or an unreachable ledger only warns.
+            # opposite remedy. Written unconditionally, zero included: the summary
+            # is in hand either way, and a NULL column otherwise conflates "old
+            # executor did not report" with "new executor, nothing abandoned" —
+            # the common case being the unreadable one (record-zero-abandoned).
+            # Guarded by run_ledger: a missing column (DB older than migration
+            # 0025) or an unreachable ledger only warns.
             from scraw_fd_open_data_mcp.run_ledger import record_abandoned
 
             record_abandoned(

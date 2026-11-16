@@ -164,3 +164,45 @@ def test_handler_skips_before_building_the_chain():
     assert "cell_budget.note_success" in src
     # The abandoned response must be distinguishable from an ordinary empty cell.
     assert b"x-fd-abandoned" in src.encode() or "x-fd-abandoned" in src
+
+
+def test_max_cells_per_pair_reports_the_largest_pair(monkeypatch):
+    """The reachability signal: how many cells did the biggest pair plan?
+
+    The budget counts *consecutive* failures of one pair, so this number decides
+    whether "nothing abandoned" is a statement about the data or about the plan.
+    """
+    monkeypatch.setenv(cell_budget.BUDGET_ENV, "12")
+    small, big = (384, "fund", 1), (384, "fund", 2)
+    cell_budget.note_attempt(small, ["a"])
+    for _ in range(23):
+        cell_budget.note_attempt(big, ["a"])
+    assert cell_budget.summary()["max_cells_per_pair"] == 23
+
+
+def test_max_cells_per_pair_is_zero_for_an_empty_run():
+    """A run that planned nothing must not report a phantom 1."""
+    assert cell_budget.summary()["max_cells_per_pair"] == 0
+
+
+def test_spider_says_when_the_budget_could_not_fire():
+    """Structural: the two "nothing abandoned" worlds must not share one line.
+
+    A run whose largest pair is smaller than the budget cannot abandon anything
+    however hopeless the upstreams are; printing the plain "nothing abandoned"
+    there reads as "every pair had data", which is a different claim (measured
+    2026-11-16: series policies plan one cell per pair, so the ceiling is the
+    retry count, well under 12).
+    """
+    src = pathlib.Path(
+        "scraw_fd_open_data_mcp/spiders/concept_crawl_spider.py"
+    ).read_text(encoding="utf-8")
+    assert "could not fire" in src, "unreachable-budget wording missing"
+    assert 'max_cells_per_pair' in src, "the verdict must print the measured number"
+    # The ledger write must NOT be gated on a positive count any more: zero has
+    # to be written, otherwise NULL keeps meaning two different things.
+    write = src.index("record_abandoned(")
+    gate = src.rindex("if _cells and job", 0, write)
+    assert '"cells_abandoned"]' not in src[gate:write], (
+        "record_abandoned must be called unconditionally (zero included)"
+    )

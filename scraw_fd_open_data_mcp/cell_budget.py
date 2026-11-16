@@ -174,6 +174,13 @@ def summary() -> dict:
             "budget": budget(),
             "cells_abandoned": sum(_STATE.abandoned_cells.values()),
             "pairs_abandoned": len(_STATE.abandoned_cells),
+            # Largest number of cells any single pair planned this run. The
+            # budget counts *consecutive* failures of one pair, so a run whose
+            # max is below the budget could not have abandoned anything however
+            # hopeless the upstreams were — "nothing abandoned" would then be a
+            # statement about the plan, not about the data. The close hook uses
+            # this to say which of the two it means.
+            "max_cells_per_pair": max(_STATE.cells_seen.values(), default=0),
             "pairs": pairs,
         }
 
