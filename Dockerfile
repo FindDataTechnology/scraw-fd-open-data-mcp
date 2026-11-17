@@ -151,7 +151,20 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # 仍只滚控制面（crawl-reconciler），cluster 行保持 sha-eb366d0。
 # 本次**只**滚 `fd-master/retention-audit` 这个 CronJob 的镜像，不动 `clusters.image`
 # ——爬虫机队的写入路径一行没改，机队留在 sha-eb366d0 是正确状态。
-ARG FD_ODM_REF="82831c928b0a47cec7dc9e5322850b73a321b171"
+# 2026-11-17：抬到 a6165bd —— 带上 reconciler 的「失败摘要活过 pod」（267059e）：
+# 取证顺序改成 pod 终态 → Job 的 `status.conditions`（含 activeDeadlineSeconds）→
+# 两者都取不到才兜底、且不编造成因。动机是实测出来的：cheap9/scraw 两个失败轮次
+# （crawl-policy-8 / crawl-policy-2659）pod 都已被回收，`policy_runs.detail` 双双写成
+# 「pod 已回收，无终态可抓」，而它们各自的 Job 对象（ttl 86400）仍在、分别带
+# `Failed/BackoffLimitExceeded` 与 `Failed/DeadlineExceeded` —— 两个不同成因被压成同一句，
+# 下游 `check_policy_freshness` 只能读成 `opaque_reason`。
+# 同样是**纯超集**：`git merge-base --is-ancestor 82831c9 a6165bd` 为真、
+# `git rev-list --count a6165bd..82831c9` = 0。共 65 笔，其中只有 6 笔动 reconciler.py
+# （另含 f828a3f「记下一轮放弃多少格」，依赖 alembic 0025 —— 在役库头已是 0025；
+# 131bfb9 取消爬取级联删 Job；8557c94「判不出就说判不出」）。
+# 仍只滚控制面（crawl-reconciler / retention-audit 这一族），clusters.image 与
+# SCRAW_K8S_IMAGE 保持 sha-eb366d0 —— 爬虫机队的写入路径一行没改。
+ARG FD_ODM_REF="a6165bd997c3cee92ad07cfd9b687f47f954ce30"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
