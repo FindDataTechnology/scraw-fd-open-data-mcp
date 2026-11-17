@@ -96,7 +96,17 @@ spec:
             # （2549fcb）。此前镜像里 policy_run_max_age_seconds 不存在 ⇒ Job 变 unresolvable 时
             # 那条 running 行永久悬着，单飞把该策略永久堵死（11-09 之后个股日线全停）。
             # 验过才换：镜像内 policy_run_max_age_seconds()=11700、stalled×13、skipped×12。
-            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-2f2ccd2
+            # 2026-11-17：sha-1860b0e = FD_ODM_REF a6165bd 的构建，带上「失败摘要活过 pod」
+            # （odm 267059e）：取证顺序改成 pod 终态 → Job 的 status.conditions（含
+            # activeDeadlineSeconds）→ 两者都取不到才兜底、且不编造成因。此前两个失败轮次
+            # （crawl-policy-8 / crawl-policy-2659）pod 已被回收，policy_runs.detail 双双写成
+            # 「pod 已回收，无终态可抓」，而它们各自的 Job 对象仍在、分别带
+            # Failed/BackoffLimitExceeded 与 Failed/DeadlineExceeded —— 两个成因被压成同一句。
+            # 纯超集：is-ancestor 82831c9 a6165bd 为真、rev-list --count a6165bd..82831c9 = 0；
+            # alembic 链头仍 0025（= 在役库头）。worker 侧 SCRAW_K8S_IMAGE 不动，仍 sha-eb366d0。
+            # 验过才换：pod 内 hasattr(reconciler,'_job_condition_summary') / K8sJobLauncher.job_body
+            # / ClusterK8sClient.job_body 三者全 True。回滚＝tag 改回 sha-2f2ccd2。
+            image: ccr.ccs.tencentyun.com/finddata/scraw-fd-open-data-mcp:sha-1860b0e
             # sha-fae6d2d carries fd-open-data-mcp 0.5.26 (concept-platform-
             # federation mirror: sibling-transaction writes, rows_written per
             # prod NOT NULL DEFAULT 0). Verified pullable from Harbor on xinru
