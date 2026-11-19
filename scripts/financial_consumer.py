@@ -5,11 +5,12 @@ import time
 import redis
 from sqlalchemy import create_engine, text
 
-REDIS_URL = os.environ.get("REDIS_URL", "redis://fd-open-redis.scraw:6379/0")
-DB_URL = os.environ.get(
-    "FD_OPEN_DATA_MCP_DATABASE_URL",
-    "postgresql+psycopg2://postgres:admin123@fd-open-pg.scraw:5432/postgres"
-)
+# 两个连接串都没有默认值：它们指向集群内的服务名，且数据库那条带口令。
+# 写在这里既公布拓扑，又让漏配的部署"看起来能跑"。
+REDIS_URL = os.environ.get("REDIS_URL")
+DB_URL = os.environ.get("FD_OPEN_DATA_MCP_DATABASE_URL")
+if not REDIS_URL or not DB_URL:
+    raise SystemExit("REDIS_URL and FD_OPEN_DATA_MCP_DATABASE_URL must both be set")
 QUEUE_KEY = "financial_crawl:tasks"
 PROGRESS_KEY = "financial_crawl:progress"
 POD_ID = os.environ.get("POD_NAME", "worker-unknown")
