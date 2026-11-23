@@ -24,8 +24,8 @@ SCHEDULER = "scrapy_redis.scheduler.Scheduler"
 SCHEDULER_QUEUE_CLASS = "scraw_fd_open_data_mcp.redis_queues.JobSpiderQueue"
 SCHEDULER_PERSIST = True  # Keep tasks when stopped
 DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
-# Canonical redis = fd-redis on guangzhou-xinru :30380, password-protected (real
-# password in guangzhou-xinru:/etc/fd-open-data/db-credentials.env). From the Mac
+# Canonical redis = fd-redis on canonical PG 主机 :30380, password-protected (real
+# password in canonical PG 主机:/etc/fd-open-data/db-credentials.env). From the Mac
 # use the SSH tunnel (localhost:30380). Always set REDIS_URL in the env for runs.
 REDIS_URL = os.environ.get("REDIS_URL", "redis://:FD_REDIS_PASSWORD@localhost:30380/0")
 # Per-project redis namespace (scraw-project-template / concept-crawl-executor spec)

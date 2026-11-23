@@ -16,7 +16,7 @@ The fd-world US ticker universe already registered rows for major tickers, so
 the curated set resolves cleanly; any ticker lacking an entity row is skipped +
 logged (never invented -- the registry resync just cleaned it).
 
-Targets the canonical DB: fd-postgres on guangzhou-xinru :30432 (fd_open_data),
+Targets the canonical DB: fd-postgres on canonical PG 主机 :30432 (fd_open_data),
 reached from the Mac via the SSH tunnel (localhost:30432). Auth: POLYGON_API_KEY
 read from fd-polygon/.env (never hardcoded); a missing key aborts before any
 network call.
@@ -46,8 +46,8 @@ SPACING = 13          # seconds between calls -> ~4.6/min (under 5/min free tier
 RETRY_429 = 90        # backoff on rate-limit
 RETRIES = 3
 
-# Canonical store on guangzhou-xinru :30432; real password lives in
-# guangzhou-xinru:/etc/fd-open-data/db-credentials.env. LAN 192.168.1.4:5433
+# Canonical store on canonical PG 主机 :30432; real password lives in
+# canonical PG 主机:/etc/fd-open-data/db-credentials.env. LAN 192.168.1.4:5433
 # retired read-only 2026-08-18.
 DB_DEFAULT = "postgresql+psycopg2://fd:FD_PG_PASSWORD@localhost:30432/fd_open_data"
 ENV_FILE = "/Users/chengsishi/finddata/fd-polygon/.env"

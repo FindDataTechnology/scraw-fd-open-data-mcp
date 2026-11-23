@@ -91,8 +91,8 @@ argocd app sync scraw-fd-open-data-mcp
 ```bash
 kubectl create secret generic fd-open-data-secrets \
   --namespace fd-open-data \
-  --from-literal=DATABASE_URL="postgresql+psycopg2://fd:FD_PG_PASSWORD@guangzhou-xinru:30432/fd_open_data" \
-  --from-literal=REDIS_URL="redis://:FD_REDIS_PASSWORD@guangzhou-xinru:30380/0" \
+  --from-literal=DATABASE_URL="postgresql+psycopg2://fd:FD_PG_PASSWORD@canonical PG 主机:30432/fd_open_data" \
+  --from-literal=REDIS_URL="redis://:FD_REDIS_PASSWORD@canonical PG 主机:30380/0" \
   --from-literal=SCRAPYD_URL="http://scrapyd.scrapyd-ops:6800" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```

@@ -18,14 +18,14 @@ IMAGE_NAME="${REGISTRY}/${HARBOR_PROJECT}/scraw-fd-open-data-mcp"
 HARBOR_USER="robot\$lawcraw_business"
 HARBOR_PASS="${HARBOR_PASSWORD:-read-from-operator-creds}"
 
-# Canonical store on guangzhou-xinru (mesh peers reach it by name; real
-# passwords live in guangzhou-xinru:/etc/fd-open-data/db-credentials.env)
-PG_HOST="guangzhou-xinru"
+# Canonical store on canonical PG 主机 (mesh peers reach it by name; real
+# passwords live in canonical PG 主机:/etc/fd-open-data/db-credentials.env)
+PG_HOST="${FD_PG_HOST:?需设 FD_PG_HOST}"
 PG_PORT="30432"
 PG_USER="fd"
 PG_PASS="FD_PG_PASSWORD"
 PG_DB="fd_open_data"
-REDIS_URL="redis://:FD_REDIS_PASSWORD@guangzhou-xinru:30380/0"
+REDIS_URL="redis://:FD_REDIS_PASSWORD@canonical PG 主机:30380/0"
 SCRAPYD_URL="http://scrapyd.scrapyd-ops:6800"
 
 echo -e "${GREEN}========================================${NC}"
