@@ -164,7 +164,7 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # 131bfb9 取消爬取级联删 Job；8557c94「判不出就说判不出」）。
 # 仍只滚控制面（crawl-reconciler / retention-audit 这一族），clusters.image 与
 # SCRAW_K8S_IMAGE 保持 sha-eb366d0 —— 爬虫机队的写入路径一行没改。
-ARG FD_ODM_REF="9324468a9ae135b1d83d54265d2beb119eb7f42a"
+ARG FD_ODM_REF="166e294fd6be80d0afc86eab97b8af28d4eca18a"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
