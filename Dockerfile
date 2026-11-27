@@ -164,7 +164,19 @@ COPY vendor/fd-datacommons /build/vendor/fd-datacommons
 # 131bfb9 取消爬取级联删 Job；8557c94「判不出就说判不出」）。
 # 仍只滚控制面（crawl-reconciler / retention-audit 这一族），clusters.image 与
 # SCRAW_K8S_IMAGE 保持 sha-eb366d0 —— 爬虫机队的写入路径一行没改。
-ARG FD_ODM_REF="166e294fd6be80d0afc86eab97b8af28d4eca18a"
+#
+# 2026-11-27：166e294 → 4377a8f（restore-astock-daily-freshness 代码部分）。**纯超集**。
+# 这一抬把 deadline 失败从「只有时长」升级为「有位置」：
+#   · 新增 policy_runs.progress 列（alembic 0026）——**DB 必须先有 0026 列**再滚带本
+#     ref 的控制面镜像，否则 reconciler 的 UPDATE 撞 UndefinedColumn（已被 try/except
+#     兜住，但本轮读数白丢）。执行体（/app/scripts 的 bulk_ingest_astock_daily）每完成
+#     一个标的自报 "<标的>|<done>/<planned>"、SIGTERM 也写一次，镜像内那份优先；
+#   · reconciler 关闭 deadline_exceeded 时把进度拼进 detail；无进度才标 reason-opaque；
+#   · check_policy_freshness 收紧 opaque 判据（带位置的 deadline 不再算 opaque）；
+#   · prewarm/gapfill 失败可判原因。
+# 直接动机：11-26 的 run 2545 **恰好跑满 180.0min = deadline 才 success**（压线），
+# 本抬不改变执行体耗时（那笔 7.4s→0.43s 的取数改造已在 4377a8f 之前），只增可判性。
+ARG FD_ODM_REF="4377a8f5fcfc59d133f208c1b8f8b08361858d5e"
 ARG FD_ODM_GIT_URL="https://github.com/FindDataTechnology/fd-open-data-mcp.git"
 ARG FD_ODP_INSTALL=""
 ARG FD_CNREPORT_INSTALL="fd-cn-report>=0.3.3"
